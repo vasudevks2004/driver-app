@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -155,7 +153,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen> with Wi
       leading: Icon(uploaded ? Icons.check_circle : Icons.add_photo_alternate_outlined,
         color: uploaded ? Colors.teal : const Color(0xFF5055F7)),
       title: Text(title), subtitle: Text(uploaded ? 'Uploaded · tap to replace' : subtitle),
-      trailing: const Icon(Icons.chevron_right), onTap: _busy ? null : action));
+      trailing: const Icon(Icons.chevron_right), onTap: _busy || _application == null ? null : action));
 
   Widget _dateField(String title, DateTime? value, VoidCallback action) => OutlinedButton.icon(
     onPressed: _busy ? null : action, icon: const Icon(Icons.calendar_today_outlined, size: 18),

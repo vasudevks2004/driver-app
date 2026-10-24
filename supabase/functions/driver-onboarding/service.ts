@@ -101,6 +101,20 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
       method: 'POST', headers: { ...headers, 'Content-Type': mime, 'x-upsert': 'true' }, body: bytes as BodyInit });
     if (!response.ok) throw new PublicError(503, 'The image could not be uploaded. Please retry.');
   }
+  async function replaceDocument(app: Row, column: string, path: string, bytes: Uint8Array, mime: string, extra: Row = {}): Promise<Row> {
+    await upload(path, bytes, mime);
+    let updated: Row;
+    try { updated = await update(app, { [column]: path, ...extra }); }
+    catch (error) {
+      // A submission racing the upload must not alter the submitted document.
+      try { await request(`${origin}/storage/v1/object/${bucket}`, { method: 'DELETE', headers, body: JSON.stringify({prefixes: [path]}) }); } catch { /* retry/cleanup administratively */ }
+      throw error;
+    }
+    if (typeof app[column] === 'string' && app[column] !== path) {
+      try { await request(`${origin}/storage/v1/object/${bucket}`, { method: 'DELETE', headers, body: JSON.stringify({prefixes: [app[column]]}) }); } catch { /* keep saved application usable */ }
+    }
+    return updated;
+  }
   async function body(request: Request): Promise<Row> {
     // JSON fields are small. Images use the bounded streaming route separately.
     if (Number(request.headers.get('content-length') ?? 0) > 4096) throw new PublicError(413, 'Request is too large.');
@@ -147,8 +161,7 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
       const mime = isPdf ? 'application/pdf' : imageType(bytes);
       if (!mime) throw new Error('Unsupported issued document');
       const path = `${session.user_id}/${app.id}/digilocker-licence-${crypto.randomUUID()}.${isPdf ? 'pdf' : mime === 'image/png' ? 'png' : 'jpg'}`;
-      await upload(path, bytes, mime);
-      await update(app, { digilocker_document_path: path, digilocker_document_uri: licence.uri, digilocker_status: 'document_received' });
+      await replaceDocument(app, 'digilocker_document_path', path, bytes, mime, { digilocker_document_uri: licence.uri, digilocker_status: 'document_received' });
       return callbackPage(true);
     } catch {
       // Never expose provider bodies, document data, state or tokens in errors.
@@ -177,7 +190,7 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
         const input = await body(req);
         const fullName = text(input.full_name, 2, 100), city = text(input.city, 2, 80);
         const existing = await db(`driver_applications?user_id=eq.${user.id}&limit=1`);
-        if (existing.length) return json(snapshot(existing[0]));
+        if (existing.length) return json(snapshot(existing[0].status === 'draft' ? await update(existing[0], { full_name: fullName, city, verified_phone: user.phone }) : existing[0]));
         // Unique user_id plus ignore-duplicates makes concurrent starts harmless.
         const response = await request(`${origin}/rest/v1/driver_applications?on_conflict=user_id`, { method: 'POST',
           headers: { ...headers, Prefer: 'resolution=ignore-duplicates,return=representation' },
@@ -203,8 +216,7 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
         const bytes = await limitedBytes(req), mime = imageType(bytes);
         if (!mime || req.headers.get('content-type') !== mime) throw new PublicError(400, 'Choose a JPG or PNG image.');
         const path = `${user.id}/${app.id}/${kind}-${crypto.randomUUID()}.${mime === 'image/png' ? 'png' : 'jpg'}`;
-        await upload(path, bytes, mime);
-        return json(snapshot(await update(app, { [`${kind}_path`]: path })));
+        return json(snapshot(await replaceDocument(app, `${kind}_path`, path, bytes, mime)));
       }
       if (route === '/digilocker/start' && req.method === 'POST') {
         if (!digiLockerConfigured(config.digiLocker)) throw new PublicError(503, 'DigiLocker is being set up. You can upload your licence photos instead.');
@@ -213,6 +225,7 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
         const c = config.digiLocker;
         const expectedCallback = `${origin}/functions/v1/driver-onboarding/digilocker/callback`;
         if (c.redirectUri !== expectedCallback) throw new PublicError(503, 'DigiLocker is being set up. Please use licence photos for now.');
+        await db(`driver_digilocker_requests?expires_at=lt.${encodeURIComponent(new Date().toISOString())}`, 'DELETE');
         // Invalidate earlier unused requests for this applicant and remove verifiers.
         await db(`driver_digilocker_requests?user_id=eq.${user.id}&consumed_at=is.null`, 'DELETE');
         const state = b64url(crypto.getRandomValues(new Uint8Array(32)));

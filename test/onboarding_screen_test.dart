@@ -46,7 +46,8 @@ void main() {
     await tester.pumpAndSettle();
   }
   Future<void> tap(WidgetTester tester, Finder finder) async {
-    await tester.ensureVisible(finder); await tester.tap(finder); await tester.pumpAndSettle();
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle(); await tester.tap(finder); await tester.pumpAndSettle();
   }
 
   testWidgets('registration documents and selfie fit a narrow phone', (tester) async {

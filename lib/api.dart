@@ -26,7 +26,8 @@ class DriverApi {
     });
     if (body != null) req.body = jsonEncode(body);
     final http.Response res;
-    try { res = await http.Response.fromStream(await req.send()); }
+    try { res = await (() async => http.Response.fromStream(await req.send()))()
+        .timeout(const Duration(seconds: 20)); }
     catch (_) { throw StateError('Could not reach HireD. Check internet and server configuration.'); }
     dynamic payload;
     try {
@@ -55,3 +56,4 @@ class DriverApi {
     if (res.statusCode >= 400) throw ApiException('Upload failed (${res.statusCode})', res.statusCode);
   }
 }
+

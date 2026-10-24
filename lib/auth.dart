@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'api.dart';
+import 'auth_config.dart';
+import 'identity_auth.dart';
 
 const bool allowDemo = bool.fromEnvironment('ALLOW_DEMO', defaultValue: false);
 
@@ -71,12 +73,65 @@ class DriverSession {
 }
 
 class DriverAuth {
-  DriverAuth(this.baseUrl);
+  DriverAuth(this.baseUrl, {SupabaseIdentityAuth? identity})
+      : identity = identity ?? SupabaseIdentityAuth(const DriverAuthConfig.fromEnvironment());
   final String baseUrl;
+  final SupabaseIdentityAuth identity;
   static const _storage = FlutterSecureStorage();
   static const _sessionKey = 'hired.driver.session.v1';
 
   DriverSession? current;
+
+  void dispose() => identity.dispose();
+
+  void _requireServer() {
+    if (baseUrl.isEmpty) {
+      throw const DriverAuthException('Sign-in is being set up. Please contact HireD support.');
+    }
+  }
+
+  Future<void> sendPhoneOtp(String phone, {
+    bool register = false,
+    String? fullName,
+    String? city,
+  }) {
+    _requireServer();
+    return identity.sendPhoneOtp(phone, register: register, fullName: fullName, city: city);
+  }
+
+  Future<DriverSession> verifyPhoneOtp(String phone, String code) async {
+    _requireServer();
+    return _acceptIdentity(await identity.verifyPhoneOtp(phone, code));
+  }
+
+  Future<DriverSession?> loginWithGoogle() async {
+    _requireServer();
+    final result = await identity.signInWithGoogle();
+    return result == null ? null : _acceptIdentity(result);
+  }
+
+  Future<DriverSession> _acceptIdentity(IdentitySession identitySession) async {
+    try {
+      // Only the trusted driver service can establish a driver's membership.
+      final profile = await DriverApi(baseUrl, identitySession.accessToken)
+          .request('/drivers/me');
+      final session = DriverSession.fromResponse({
+        'token': identitySession.accessToken,
+        'refreshToken': identitySession.refreshToken,
+        'expiresIn': identitySession.expiresIn,
+        'profile': profile,
+      });
+      await _save(session);
+      return session;
+    } catch (error) {
+      // Never retain an identity-only session as a driver session.
+      try { await identity.signOut(identitySession.accessToken); } catch (_) {}
+      if (error is ApiException && error.statusCode == 403) {
+        throw const DriverActivationRequired();
+      }
+      rethrow;
+    }
+  }
 
   DriverApi get _api => DriverApi(baseUrl, current?.token ?? '');
 
@@ -229,3 +284,4 @@ class DriverAuth {
         value.substring(20);
   }
 }
+

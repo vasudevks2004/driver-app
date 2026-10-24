@@ -142,8 +142,12 @@ class SupabaseIdentityAuth {
           'The code is incorrect or expired. Please try again or request a new code.',
         );
       }
+      if (code == 'phone_provider_disabled' || code == 'otp_disabled') {
+        throw const DriverAuthException(
+          'SMS sign-in is not configured yet. Please use email sign-in or contact HireD support.',
+        );
+      }
       if (code == 'provider_disabled' ||
-          code == 'phone_provider_disabled' ||
           code == 'sms_send_failed' ||
           code == 'validation_failed') {
         throw const DriverAuthException(

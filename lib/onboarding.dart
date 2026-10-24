@@ -42,6 +42,7 @@ class DriverOnboarding {
   DriverOnboarding(this.config, {http.Client? client, this.timeout = const Duration(seconds: 25)})
     : _client = client ?? http.Client(), _ownsClient = client == null;
   final DriverAuthConfig config;
+  bool get isPreview => false;
   final http.Client _client;
   final bool _ownsClient;
   final Duration timeout;

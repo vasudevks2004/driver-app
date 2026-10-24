@@ -2,3 +2,8 @@
 # Public OAuth callback shares this function. Every other route validates the
 # bearer with Auth /user and requires a confirmed phone inside the handler.
 verify_jwt = false
+
+[functions.send-sms-msg91]
+# Supabase Auth signs its hook requests using Standard Webhooks; the handler
+# verifies signature, timestamp and bounded payload before any SMS operation.
+verify_jwt = false

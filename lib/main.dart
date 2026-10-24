@@ -51,13 +51,15 @@ class HireDApp extends StatelessWidget {
 }
 
 class DriverHome extends StatefulWidget {
-  const DriverHome({super.key});
+  const DriverHome({super.key, this.authOverride, this.onboardingOverride});
+  final DriverAuth? authOverride;
+  final DriverOnboarding? onboardingOverride;
   @override
   State<DriverHome> createState() => _DriverHomeState();
 }
 
 class _DriverHomeState extends State<DriverHome> {
-  late final DriverAuth auth = DriverAuth(apiUrl);
+  late final DriverAuth auth = widget.authOverride ?? DriverAuth(apiUrl);
   String? token;
   Uint8List? _avatar;
   bool demo = false, online = false, busy = false, restoring = true;
@@ -160,13 +162,13 @@ class _DriverHomeState extends State<DriverHome> {
   }
 
   Future<void> loadAvatar(DriverSession session) async {
-    final service = DriverOnboarding(auth.identity.config);
+    final service = widget.onboardingOverride ?? DriverOnboarding(auth.identity.config);
     try {
       final avatar = await service.avatar(session.token);
       if (mounted && token == session.token) setState(() => _avatar = avatar);
     } catch (_) {
       // A missing profile photo must not block driver access.
-    } finally { service.dispose(); }
+    } finally { if (widget.onboardingOverride == null) service.dispose(); }
   }
 
   Future<void> restoreSession() async {
@@ -276,6 +278,7 @@ class _DriverHomeState extends State<DriverHome> {
 
   Widget loginScreen() => DriverAuthScreen(
     auth: auth,
+    onboarding: widget.onboardingOverride,
     onAuthenticated: (session) async {
       if (!mounted) return;
       activateSession(session);

@@ -174,9 +174,9 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen> with Wi
           const SizedBox(height: 16),
           if (submitted) ...[
             const Icon(Icons.task_alt, color: Colors.teal, size: 66), const SizedBox(height: 20),
-            Text('Application submitted.', style: Theme.of(context).textTheme.headlineSmall),
+            Text(widget.service.isPreview ? 'Preview complete.' : 'Application submitted.', style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 12),
-            const Text('HireD will review your licence and selfie before activating your driver profile. You can sign in once your profile is approved.'),
+            Text(widget.service.isPreview ? 'This application is only a local preview. Nothing was sent to HireD. Return to sign-in to test the dashboard.' : 'HireD will review your licence and selfie before activating your driver profile. You can sign in once your profile is approved.'),
             const SizedBox(height: 16), SelectableText('Application reference: ${app!.id}'),
             const SizedBox(height: 24), FilledButton(onPressed: _busy ? null : widget.onClose, child: const Text('Back to sign in')),
           ] else Form(key: _form, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -184,7 +184,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen> with Wi
             const SizedBox(height: 9),
             Text('${widget.fullName} · ${widget.city}', style: const TextStyle(color: Color(0xFF687083))),
             const SizedBox(height: 8),
-            const Text('Your mobile is verified. Add your licence and a clear selfie for your driver avatar.'),
+            Text(widget.service.isPreview ? 'Test code accepted. Add sample licence details and a selfie to preview registration.' : 'Your mobile is verified. Add your licence and a clear selfie for your driver avatar.'),
             const SizedBox(height: 22),
             Center(child: CircleAvatar(radius: 45,
               backgroundImage: _selfie == null ? null : MemoryImage(_selfie!),

@@ -29,6 +29,6 @@ jobs:
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
       - name: Check onboarding service types
-        run: npx --yes deno@2.9.6 check supabase/functions/driver-onboarding/index.ts
+        run: npx --yes deno@2.9.6 check supabase/functions/driver-onboarding/index.ts supabase/functions/send-sms-msg91/index.ts
       - name: Test onboarding service over HTTP stand-ins
-        run: npx --yes node@24.22.1 --experimental-strip-types --test supabase/functions/driver-onboarding/service.test.mjs
+        run: npx --yes node@24.22.1 --experimental-strip-types --test supabase/functions/driver-onboarding/service.test.mjs supabase/functions/send-sms-msg91/service.test.mjs

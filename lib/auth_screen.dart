@@ -589,7 +589,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         ),
         child: const Icon(Icons.sms_outlined, color: _primary, size: 31),
       ),
-      _title('Verify your number.', 'Enter the 6-digit code sent to $_sentTo.'),
+      _title('Verify your number.', widget.onboarding?.isPreview == true ? 'Enter the local test code 123456. No SMS was sent.' : 'Enter the 6-digit code sent to $_sentTo.'),
       _label('Verification code'),
       TextFormField(
         key: const Key('phone-otp'),

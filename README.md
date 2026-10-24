@@ -34,11 +34,21 @@ Select **Explore demo** on the login screen. Sample duty `TRP-1028` can be start
 
 See [docs/DRIVER_ONBOARDING.md](docs/DRIVER_ONBOARDING.md) for private document storage, the onboarding service, DigiLocker credentials, and reviewer handoff. The HireD wordmark uses a transparent cropped SVG through one shared component.
 
+## Free local OTP preview
+
+```bash
+flutter run -t lib/main_dev.dart
+```
+
+Use **+91 9876543210** and test code **123456** to try login and driver registration. This debug-only preview uses local in-memory data and sends no SMS or documents. The yellow banner stays visible; existing production accounts/sessions are not accessed. A restart resets preview data.
+
+For real Indian SMS, the MSG91 delivery hook is implemented; activation requires your MSG91 key, approved Flow template and Supabase signing secret. See [docs/SMS_SETUP.md](docs/SMS_SETUP.md) for setup and exact readiness limits.
+
 ## Provider setup still required
 
 On 24 October 2026, the connected project's public Auth settings reported `google: false` and `phone: false`. The screens and HTTP flows are implemented, but Google and SMS sign-in cannot work live until those providers are configured and enabled. No live SMS was sent and no Google account was signed in during development.
 
-Follow [GITHUB_SETUP.md](GITHUB_SETUP.md) for Google Android/iOS registration, SMS activation, existing-driver linking, and device checks.
+Follow [GITHUB_SETUP.md](GITHUB_SETUP.md) for Google Android/iOS registration and driver linking, and [docs/SMS_SETUP.md](docs/SMS_SETUP.md) for MSG91 activation.
 
 ## Driver features
 

@@ -210,9 +210,9 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
     ],
   );
 
-  InputDecoration _decoration(String hint, IconData icon) => InputDecoration(
+  InputDecoration _decoration(String hint, IconData? icon) => InputDecoration(
     hintText: hint,
-    prefixIcon: Icon(icon, size: 20, color: _muted),
+    prefixIcon: icon == null ? null : Icon(icon, size: 20, color: _muted),
     filled: true,
     fillColor: const Color(0xFFFAFAFD),
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
@@ -317,8 +317,8 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
             width: 94,
             child: DropdownButtonFormField<String>(
               value: _countryCode,
-              decoration: _decoration('', Icons.phone_outlined).copyWith(
-                prefixIcon: null,
+              isExpanded: true,
+              decoration: _decoration('', null).copyWith(
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 17,

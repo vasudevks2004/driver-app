@@ -116,6 +116,12 @@ class DriverAuth {
     );
   }
 
+  /// A verified applicant may submit documents, but has no driver permissions.
+  Future<IdentitySession> verifyRegistrationOtp(String phone, String code) {
+    _requireServer();
+    return identity.verifyPhoneOtp(phone, code);
+  }
+
   Future<DriverSession> verifyPhoneOtp(String phone, String code) async {
     _requireServer();
     return _acceptIdentity(await identity.verifyPhoneOtp(phone, code));

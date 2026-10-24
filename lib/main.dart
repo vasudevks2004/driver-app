@@ -1,12 +1,15 @@
 import 'dart:convert';
+import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
 import 'auth.dart';
 import 'auth_screen.dart';
+import 'brand.dart';
+import 'onboarding.dart';
 
 const primary = Color(0xFF5055F7);
 const bg = Color(0xFFF7F8FC);
@@ -48,14 +51,17 @@ class HireDApp extends StatelessWidget {
 }
 
 class DriverHome extends StatefulWidget {
-  const DriverHome({super.key});
+  const DriverHome({super.key, this.authOverride, this.onboardingOverride});
+  final DriverAuth? authOverride;
+  final DriverOnboarding? onboardingOverride;
   @override
   State<DriverHome> createState() => _DriverHomeState();
 }
 
 class _DriverHomeState extends State<DriverHome> {
-  late final DriverAuth auth = DriverAuth(apiUrl);
+  late final DriverAuth auth = widget.authOverride ?? DriverAuth(apiUrl);
   String? token;
+  Uint8List? _avatar;
   bool demo = false, online = false, busy = false, restoring = true;
   bool mustChangePassword = false;
   final newPassword = TextEditingController();
@@ -133,6 +139,7 @@ class _DriverHomeState extends State<DriverHome> {
   void activateSession(DriverSession session) {
     setState(() {
       token = session.token;
+      _avatar = null;
       demo = false;
       mustChangePassword = session.mustChangePassword;
       driverName = (session.profile['name'] ?? 'Driver').toString();
@@ -154,12 +161,23 @@ class _DriverHomeState extends State<DriverHome> {
     });
   }
 
+  Future<void> loadAvatar(DriverSession session) async {
+    final service = widget.onboardingOverride ?? DriverOnboarding(auth.identity.config);
+    try {
+      final avatar = await service.avatar(session.token);
+      if (mounted && token == session.token) setState(() => _avatar = avatar);
+    } catch (_) {
+      // A missing profile photo must not block driver access.
+    } finally { if (widget.onboardingOverride == null) service.dispose(); }
+  }
+
   Future<void> restoreSession() async {
     try {
       final saved = await auth.restore();
       if (!mounted) return;
       if (saved != null) {
         activateSession(saved);
+        unawaited(loadAvatar(saved));
         if (!saved.mustChangePassword) await refresh();
       }
     } catch (error) {
@@ -260,9 +278,11 @@ class _DriverHomeState extends State<DriverHome> {
 
   Widget loginScreen() => DriverAuthScreen(
     auth: auth,
+    onboarding: widget.onboardingOverride,
     onAuthenticated: (session) async {
       if (!mounted) return;
       activateSession(session);
+      unawaited(loadAvatar(session));
       if (!session.mustChangePassword) await refresh();
     },
     onDemo: allowDemo
@@ -271,6 +291,7 @@ class _DriverHomeState extends State<DriverHome> {
             token = null;
             page = 0;
             driverName = 'Alex Morgan';
+            _avatar = null;
           })
         : null,
   );
@@ -285,11 +306,7 @@ class _DriverHomeState extends State<DriverHome> {
             padding: const EdgeInsets.all(26),
             children: [
               Center(
-                child: SvgPicture.asset(
-                  'assets/hired-logo.svg',
-                  width: 140,
-                  height: 70,
-                ),
+                child: const HireDLogo(width: 160),
               ),
               const SizedBox(height: 24),
               heading(
@@ -865,6 +882,10 @@ class _DriverHomeState extends State<DriverHome> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       heading('My profile', 'Availability and onboarding documents'),
+      Padding(padding: const EdgeInsets.only(bottom: 16), child: CircleAvatar(
+        radius: 38, backgroundImage: _avatar == null ? null : MemoryImage(_avatar!),
+        child: _avatar == null ? const Icon(Icons.person_outline, size: 38) : null,
+      )),
       panel(
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1015,19 +1036,14 @@ class _DriverHomeState extends State<DriverHome> {
   @override
   Widget build(BuildContext context) {
     if (restoring)
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [HireDLogo(width: 160), SizedBox(height: 28), CircularProgressIndicator()])));
     if (!demo && token == null) return loginScreen();
     if (!demo && mustChangePassword) return changePasswordScreen();
     return Scaffold(
       appBar: AppBar(
         title: Row(
           children: [
-            SvgPicture.asset(
-              'assets/hired-logo.svg',
-              width: 92,
-              height: 42,
-              fit: BoxFit.contain,
-            ),
+            const HireDLogo(width: 108),
             const Spacer(),
             if (demo)
               const Text(

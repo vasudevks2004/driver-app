@@ -28,12 +28,12 @@ Official setup: [Google Flutter plugin](https://pub.dev/packages/google_sign_in)
 
 ## Phone and registration
 
-1. Enable Phone in Supabase Authentication providers and connect an SMS provider. Provider credentials stay in Supabase. Adjust sending/rate-limit settings for the prototype; use provider test numbers where available.
+1. For free local testing, run `flutter run -t lib/main_dev.dart` with the banner’s test number/code. For real Indian SMS, follow [docs/SMS_SETUP.md](docs/SMS_SETUP.md) to configure the MSG91 Send SMS hook and enable Phone. Keep provider credentials server-side.
 2. The app uses a 6-digit SMS OTP. Keep the project's SMS OTP length at 6. The resend button waits 60 seconds, and server-side limits remain authoritative.
-3. Login calls `/auth/v1/otp` with `create_user: false`. Registration calls the same route with `create_user: true`, `full_name`, optional `city`, and an onboarding intent. OTP verification calls `/auth/v1/verify` with `type: sms`.
-4. A registration creates/verifies a **Supabase Auth identity**, not an approved driver record or an admin review queue. A HireD administrator must review it and provision/link the existing driver record to that Auth user's ID using the backend's trusted onboarding process. A phone-looking value in user metadata does not link a phone identity.
+3. Login calls `/auth/v1/otp` with `create_user: false`. Registration calls the same route with `create_user: true`, `full_name`, `city`, and an onboarding intent. OTP verification calls `/auth/v1/verify` with `type: sms`.
+4. Registration first verifies a **Supabase Auth identity**, then opens the private onboarding service described in [docs/DRIVER_ONBOARDING.md](docs/DRIVER_ONBOARDING.md). Submitting documents adds a `submitted` driver application; this does not create an approved driver record. A HireD administrator must review it and provision/link the existing driver record to that Auth user's ID using the backend's trusted onboarding process. A phone-looking value in user metadata does not link a phone identity.
 5. Existing email/password drivers must have a verified phone identity associated with their **same Auth user** to use phone login. The app does not silently merge accounts based on an unverified phone/name. For Google, use the approved account's email and confirm the identity is linked to the correct Auth user.
-6. Check correct, wrong and expired OTPs, resend, change-number, duplicate registration, network failure and a verified identity without driver access. The app presents an activation screen for a profile denied with HTTP 403 and revokes the temporary identity-only session.
+6. Check correct, wrong and expired OTPs, resend, change-number, duplicate registration, network failure and a verified identity without driver access. Existing-driver login presents an activation screen for a profile denied with HTTP 403 and revokes the temporary identity-only session. Registration keeps the applicant token in memory only while collecting documents, then signs out. It never stores that token as a driver session.
 
 Official setup: [Supabase phone login](https://supabase.com/docs/guides/auth/phone-login), [identity linking](https://supabase.com/docs/guides/auth/auth-identity-linking).
 

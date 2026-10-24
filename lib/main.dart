@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -5,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
-import 'api.dart';
+import 'auth.dart';
 
 const primary = Color(0xFF5055F7);
 const bg = Color(0xFFF7F8FC);
@@ -49,8 +50,13 @@ class DriverHome extends StatefulWidget {
 
 class _DriverHomeState extends State<DriverHome> {
   static const storage = FlutterSecureStorage();
+  late final DriverAuth auth = DriverAuth(apiUrl);
   String? token;
-  bool demo = true, online = false, busy = false;
+  bool demo = false, online = false, busy = false, restoring = true;
+  bool mustChangePassword = false;
+  final newPassword = TextEditingController();
+  final confirmPassword = TextEditingController();
+  bool passwordVisible = false;
   int page = 0;
   String? selectedId;
   String driverName = 'Alex Morgan';
@@ -84,7 +90,6 @@ class _DriverHomeState extends State<DriverHome> {
     {'trip': 'TRP-1025', 'amount': 900.0, 'date': 'Yesterday'}
   ];
 
-  DriverApi get api => DriverApi(apiUrl, token ?? '');
   String money(num amount) =>
       NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0)
           .format(amount);
@@ -98,18 +103,42 @@ class _DriverHomeState extends State<DriverHome> {
   @override
   void dispose() {
     username.dispose(); password.dispose(); expenseTitle.dispose();
-    expenseAmount.dispose(); otp.dispose();
+    expenseAmount.dispose(); otp.dispose(); newPassword.dispose(); confirmPassword.dispose();
     super.dispose();
+  }
+
+  void activateSession(DriverSession session) {
+    setState(() {
+      token = session.token;
+      demo = false;
+      mustChangePassword = session.mustChangePassword;
+      driverName = (session.profile['name'] ?? 'Driver').toString();
+      online = session.profile['online'] == true;
+      trips = [];
+      balance = 0;
+      credits = [];
+      unavailable
+        ..clear()
+        ..addAll((session.profile['unavailableDates'] as List? ?? []).map((x) => x.toString()));
+      docs.updateAll((key, value) => session.profile['documents']?[key] == true);
+      page = 0;
+    });
   }
 
   Future<void> restoreSession() async {
     try {
-      final saved = await storage.read(key: 'driver_token');
-      if (saved == null || !mounted) return;
-      setState(() { token = saved; demo = false; });
-      await refresh();
+      final saved = await auth.restore();
+      if (!mounted) return;
+      if (saved != null) {
+        activateSession(saved);
+        if (!saved.mustChangePassword) await refresh();
+      }
     } catch (error) {
+      // Connectivity issues are different from invalid credentials.
+      // Keep the dashboard locked and let the driver retry verification.
       showError(error);
+    } finally {
+      if (mounted) setState(() => restoring = false);
     }
   }
 
@@ -128,11 +157,11 @@ class _DriverHomeState extends State<DriverHome> {
   }
 
   Future<void> refresh() async {
-    if (demo || token == null) return;
+    if (demo || token == null || mustChangePassword) return;
     try {
-      final profile = await api.request('/drivers/me') as Map;
-      final assignments = await api.request('/drivers/me/trips');
-      final wallet = await api.request('/drivers/me/wallet') as Map;
+      final profile = await auth.request('/drivers/me') as Map;
+      final assignments = await auth.request('/drivers/me/trips');
+      final wallet = await auth.request('/drivers/me/wallet') as Map;
       if (!mounted) return;
       setState(() {
         driverName = (profile['name'] ?? 'Driver').toString();
@@ -149,23 +178,120 @@ class _DriverHomeState extends State<DriverHome> {
   }
 
   Future<void> login() => runTask(() async {
-    final data = await DriverApi(apiUrl, '').request(
-      '/auth/driver/login', method: 'POST',
-      body: {'username': username.text.trim(), 'password': password.text},
-    ) as Map;
-    final received = data['token']?.toString();
-    if (received == null || received.isEmpty) {
-      throw StateError('Login did not return a session token');
+    final email = username.text.trim();
+    if (!RegExp(r'^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$').hasMatch(email) || password.text.isEmpty) {
+      throw StateError('Enter your work email and password.');
     }
-    await storage.write(key: 'driver_token', value: received);
-    setState(() { token = received; demo = false; });
-    await refresh();
+    final session = await auth.login(email, password.text);
+    password.clear();
+    if (!mounted) return;
+    activateSession(session);
+    if (!session.mustChangePassword) await refresh();
+  });
+
+  Future<void> updatePassword() => runTask(() async {
+    final updated = newPassword.text;
+    if (updated != confirmPassword.text) throw StateError('Passwords do not match.');
+    if (utf8.encode(updated).length < 12 || utf8.encode(updated).length > 72) {
+      throw StateError('Use a password between 12 and 72 bytes.');
+    }
+    if (password.text.isEmpty) throw StateError('Enter your temporary password.');
+    final session = await auth.changePassword(password.text, updated);
+    password.clear();
+    newPassword.clear();
+    confirmPassword.clear();
+    if (!mounted) return;
+    activateSession(session);
+    if (!session.mustChangePassword) await refresh();
   });
 
   Future<void> logout() => runTask(() async {
-    await storage.delete(key: 'driver_token');
-    setState(() { token = null; demo = true; page = 0; driverName = 'Alex Morgan'; });
+    final revoked = await auth.logout();
+    if (!mounted) return;
+    setState(() {
+      token = null; demo = false; mustChangePassword = false;
+      page = 0; driverName = 'Driver'; trips = []; credits = [];
+      balance = 0; online = false; unavailable.clear();
+      docs.updateAll((key, value) => false);
+    });
+    if (!revoked) showError('Signed out on this device. Server revocation could not be confirmed.');
   });
+
+  Widget loginScreen() => Scaffold(
+    body: SafeArea(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: ListView(shrinkWrap: true, padding: const EdgeInsets.all(26), children: [
+            const SizedBox(height: 36),
+            Center(child: SvgPicture.asset('assets/hired-logo.svg',
+              width: 166, height: 82, fit: BoxFit.contain)),
+            const SizedBox(height: 38),
+            heading('Welcome to HireD', 'Sign in to manage your driver duties and earnings.'),
+            section('Driver sign in'),
+            const Text('Work email', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            TextField(controller: username, keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.next, autofillHints: const [AutofillHints.email],
+              autocorrect: false, decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.alternate_email), hintText: 'driver@example.com')),
+            const SizedBox(height: 18),
+            const Text('Password', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            TextField(controller: password, obscureText: !passwordVisible,
+              autofillHints: const [AutofillHints.password],
+              decoration: InputDecoration(prefixIcon: const Icon(Icons.lock_outline),
+                hintText: 'Enter your password',
+                suffixIcon: IconButton(onPressed: () =>
+                  setState(() => passwordVisible = !passwordVisible),
+                  icon: Icon(passwordVisible ? Icons.visibility_off : Icons.visibility)))),
+            const SizedBox(height: 22),
+            button(busy ? 'Signing in…' : 'Sign in', login),
+            const SizedBox(height: 12),
+            const Text('Your HireD administrator creates your driver account.',
+              textAlign: TextAlign.center, style: TextStyle(color: muted, fontSize: 12)),
+            if (apiUrl.isEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('Backend not configured. Set API_URL when building.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.redAccent, fontSize: 12)),
+            ],
+            if (allowDemo) ...[
+              const SizedBox(height: 16),
+              button('Explore demo (sample data only)', () => setState(() {
+                demo = true; token = null; page = 0;
+                driverName = 'Alex Morgan';
+              }), light: true),
+            ],
+          ]),
+        ),
+      ),
+    ),
+  );
+
+  Widget changePasswordScreen() => Scaffold(
+    body: SafeArea(child: Center(child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 430),
+      child: ListView(shrinkWrap: true, padding: const EdgeInsets.all(26), children: [
+        Center(child: SvgPicture.asset('assets/hired-logo.svg',
+          width: 140, height: 70)),
+        const SizedBox(height: 24),
+        heading('Secure your account', 'Change the temporary password supplied by HireD admin.'),
+        TextField(controller: password, obscureText: true,
+          decoration: const InputDecoration(labelText: 'Temporary password')),
+        const SizedBox(height: 12),
+        TextField(controller: newPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'New password (12+ characters)')),
+        const SizedBox(height: 12),
+        TextField(controller: confirmPassword, obscureText: true,
+          decoration: const InputDecoration(labelText: 'Confirm new password')),
+        const SizedBox(height: 18),
+        button(busy ? 'Updating password…' : 'Update password', updatePassword),
+        const SizedBox(height: 12),
+        button('Sign out', logout, light: true),
+      ]),
+    ))),
+  );
 
   Widget panel(Widget child, {Color color = Colors.white}) => Container(
     width: double.infinity, margin: const EdgeInsets.only(bottom: 14),
@@ -247,7 +373,7 @@ class _DriverHomeState extends State<DriverHome> {
           ])),
           Switch(value: online, activeThumbColor: Colors.white,
             onChanged: (value) => runTask(() async {
-              if (!demo) await api.request('/drivers/me/availability',
+              if (!demo) await auth.request('/drivers/me/availability',
                 method: 'PATCH', body: {'online': value,
                   'unavailableDates': unavailable.toList()});
               setState(() => online = value);
@@ -313,7 +439,7 @@ class _DriverHomeState extends State<DriverHome> {
       ])),
       if (status == 'Assigned')
         button('Start driver duty', () => runTask(() async {
-          if (!demo) await api.request('/trips/${t['id']}/start', method: 'POST');
+          if (!demo) await auth.request('/trips/${t['id']}/start', method: 'POST');
           setState(() => t['status'] = 'Ongoing');
         })),
       if (status == 'Ongoing') ...[
@@ -326,7 +452,7 @@ class _DriverHomeState extends State<DriverHome> {
             final photo = await ImagePicker().pickImage(
               source: ImageSource.camera, imageQuality: 70);
             if (photo == null) return;
-            if (!demo) await api.upload('/trips/${t['id']}/selfie', photo.path);
+            if (!demo) await auth.upload('/trips/${t['id']}/selfie', photo.path);
             setState(() => t['selfie'] = true);
           }), light: true),
         ])),
@@ -348,7 +474,7 @@ class _DriverHomeState extends State<DriverHome> {
             if (title.isEmpty || amount == null || amount < 0) {
               throw StateError('Enter a description and non-negative amount');
             }
-            if (!demo) await api.request('/trips/${t['id']}/expenses',
+            if (!demo) await auth.request('/trips/${t['id']}/expenses',
               method: 'POST', body: {'description': title, 'amount': amount});
             setState(() {
               (t['expenses'] as List).add({'description': title, 'amount': amount});
@@ -382,7 +508,7 @@ class _DriverHomeState extends State<DriverHome> {
                 page = 2;
               });
             } else {
-              await api.request('/trips/${t['id']}/close',
+              await auth.request('/trips/${t['id']}/close',
                 method: 'POST', body: {'otp': otp.text});
               await refresh();
               setState(() => page = 2);
@@ -445,7 +571,7 @@ class _DriverHomeState extends State<DriverHome> {
         return InkWell(onTap: () => runTask(() async {
           final next = {...unavailable};
           if (blocked) { next.remove(key); } else { next.add(key); }
-          if (!demo) await api.request('/drivers/me/availability',
+          if (!demo) await auth.request('/drivers/me/availability',
             method: 'PATCH', body: {'online': online, 'unavailableDates': next.toList()});
           setState(() { unavailable..clear()..addAll(next); });
         }), child: Container(width: 64, padding: const EdgeInsets.all(9),
@@ -479,39 +605,20 @@ class _DriverHomeState extends State<DriverHome> {
           type: FileType.custom, allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf']);
         final path = chosen?.files.single.path;
         if (path == null) return;
-        if (!demo) await api.upload('/drivers/me/documents/${entry.key}', path);
+        if (!demo) await auth.upload('/drivers/me/documents/${entry.key}', path);
         setState(() => docs[entry.key] = true);
       }), icon: const Icon(Icons.upload_file, color: primary)),
     ]))),
-    button(demo ? 'Connect to backend' : 'Sign out', demo ? showLogin : logout,
+    button(demo ? 'Exit demo' : 'Sign out', demo ? () => setState(() { demo = false; page = 0; }) : logout,
       light: true),
   ]);
 
-  void showLogin() {
-    if (apiUrl.isEmpty) {
-      showError('Start Flutter with --dart-define=API_URL=https://your-server/api/v1');
-      return;
-    }
-    showDialog<void>(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Driver login'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: username,
-            decoration: const InputDecoration(labelText: 'Username')),
-          const SizedBox(height: 10),
-          TextField(controller: password, obscureText: true,
-            decoration: const InputDecoration(labelText: 'Password')),
-        ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-        TextButton(onPressed: () { Navigator.pop(ctx); login(); },
-          child: const Text('Sign in')),
-      ],
-    ));
-  }
-
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    if (restoring) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!demo && token == null) return loginScreen();
+    if (!demo && mustChangePassword) return changePasswordScreen();
+    return Scaffold(
     appBar: AppBar(
       title: Row(children: [
         SvgPicture.asset('assets/hired-logo.svg', width: 92, height: 42,
@@ -547,4 +654,5 @@ class _DriverHomeState extends State<DriverHome> {
       ),
     ]),
   );
+  }
 }

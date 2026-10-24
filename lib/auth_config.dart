@@ -7,10 +7,10 @@ class DriverAuthConfig {
   });
 
   const DriverAuthConfig.fromEnvironment()
-      : supabaseUrl = const String.fromEnvironment('SUPABASE_URL'),
-        publishableKey = const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
-        googleWebClientId = const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
-        googleIosClientId = const String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+    : supabaseUrl = const String.fromEnvironment('SUPABASE_URL'),
+      publishableKey = const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'),
+      googleWebClientId = const String.fromEnvironment('GOOGLE_WEB_CLIENT_ID'),
+      googleIosClientId = const String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
 
   final String supabaseUrl;
   final String publishableKey;

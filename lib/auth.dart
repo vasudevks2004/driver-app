@@ -31,9 +31,12 @@ class DriverSession {
     final access = result['token'];
     final refresh = result['refreshToken'];
     final rawProfile = result['profile'];
-    if (access is! String || access.isEmpty ||
-        refresh is! String || refresh.isEmpty ||
-        rawProfile is! Map || rawProfile['role'] != 'driver') {
+    if (access is! String ||
+        access.isEmpty ||
+        refresh is! String ||
+        refresh.isEmpty ||
+        rawProfile is! Map ||
+        rawProfile['role'] != 'driver') {
       throw const FormatException('A verified driver session is required.');
     }
     final seconds = (result['expiresIn'] as num?)?.toInt() ?? 3600;
@@ -56,11 +59,15 @@ class DriverSession {
   };
 
   static DriverSession fromJson(Map<String, dynamic> json) {
-    final token = json['token'], refreshToken = json['refreshToken'],
-      rawProfile = json['profile'];
-    if (token is! String || token.isEmpty ||
-        refreshToken is! String || refreshToken.isEmpty ||
-        rawProfile is! Map || rawProfile['role'] != 'driver') {
+    final token = json['token'],
+        refreshToken = json['refreshToken'],
+        rawProfile = json['profile'];
+    if (token is! String ||
+        token.isEmpty ||
+        refreshToken is! String ||
+        refreshToken.isEmpty ||
+        rawProfile is! Map ||
+        rawProfile['role'] != 'driver') {
       throw const FormatException('Saved driver session is invalid.');
     }
     return DriverSession(
@@ -74,7 +81,9 @@ class DriverSession {
 
 class DriverAuth {
   DriverAuth(this.baseUrl, {SupabaseIdentityAuth? identity})
-      : identity = identity ?? SupabaseIdentityAuth(const DriverAuthConfig.fromEnvironment());
+    : identity =
+          identity ??
+          SupabaseIdentityAuth(const DriverAuthConfig.fromEnvironment());
   final String baseUrl;
   final SupabaseIdentityAuth identity;
   static const _storage = FlutterSecureStorage();
@@ -86,17 +95,25 @@ class DriverAuth {
 
   void _requireServer() {
     if (baseUrl.isEmpty) {
-      throw const DriverAuthException('Sign-in is being set up. Please contact HireD support.');
+      throw const DriverAuthException(
+        'Sign-in is being set up. Please contact HireD support.',
+      );
     }
   }
 
-  Future<void> sendPhoneOtp(String phone, {
+  Future<void> sendPhoneOtp(
+    String phone, {
     bool register = false,
     String? fullName,
     String? city,
   }) {
     _requireServer();
-    return identity.sendPhoneOtp(phone, register: register, fullName: fullName, city: city);
+    return identity.sendPhoneOtp(
+      phone,
+      register: register,
+      fullName: fullName,
+      city: city,
+    );
   }
 
   Future<DriverSession> verifyPhoneOtp(String phone, String code) async {
@@ -113,8 +130,10 @@ class DriverAuth {
   Future<DriverSession> _acceptIdentity(IdentitySession identitySession) async {
     try {
       // Only the trusted driver service can establish a driver's membership.
-      final profile = await DriverApi(baseUrl, identitySession.accessToken)
-          .request('/drivers/me');
+      final profile = await DriverApi(
+        baseUrl,
+        identitySession.accessToken,
+      ).request('/drivers/me');
       final session = DriverSession.fromResponse({
         'token': identitySession.accessToken,
         'refreshToken': identitySession.refreshToken,
@@ -125,8 +144,12 @@ class DriverAuth {
       return session;
     } catch (error) {
       // Never retain an identity-only session as a driver session.
-      try { await identity.signOut(identitySession.accessToken); } catch (_) {}
-      if (error is ApiException && error.statusCode == 403) {
+      try {
+        await identity.signOut(identitySession.accessToken);
+      } catch (_) {}
+      if (error is ApiException &&
+          error.statusCode == 403 &&
+          error.isApplicationError) {
         throw const DriverActivationRequired();
       }
       rethrow;
@@ -155,7 +178,8 @@ class DriverAuth {
     }
     try {
       current = DriverSession.fromJson(
-        Map<String, dynamic>.from(jsonDecode(saved) as Map));
+        Map<String, dynamic>.from(jsonDecode(saved) as Map),
+      );
     } catch (_) {
       await _clear();
       return null;
@@ -191,7 +215,8 @@ class DriverAuth {
     if (saved == null) throw StateError('Please sign in again.');
     try {
       final result = await DriverApi(baseUrl, '').request(
-        '/auth/driver/refresh', method: 'POST',
+        '/auth/driver/refresh',
+        method: 'POST',
         body: {'refreshToken': saved.refreshToken},
       );
       final next = DriverSession.fromResponse(result);
@@ -209,7 +234,8 @@ class DriverAuth {
     final saved = current;
     if (saved == null) throw StateError('Please sign in again.');
     if (DateTime.now().toUtc().isAfter(
-        saved.expiresAt.subtract(const Duration(seconds: 60)))) {
+      saved.expiresAt.subtract(const Duration(seconds: 60)),
+    )) {
       return refresh();
     }
     return saved;
@@ -224,7 +250,9 @@ class DriverAuth {
     final key = method == 'GET' ? null : _idempotencyKey();
     try {
       return await _api.request(
-        path, method: method, body: body,
+        path,
+        method: method,
+        body: body,
         headers: key == null ? null : {'Idempotency-Key': key},
       );
     } on ApiException catch (error) {
@@ -245,14 +273,14 @@ class DriverAuth {
   }
 
   Future<DriverSession> changePassword(
-      String currentPassword, String newPassword) async {
+    String currentPassword,
+    String newPassword,
+  ) async {
     await ensureFresh();
     final result = await _api.request(
-      '/auth/driver/password', method: 'POST',
-      body: {
-        'currentPassword': currentPassword,
-        'newPassword': newPassword,
-      },
+      '/auth/driver/password',
+      method: 'POST',
+      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
     );
     final next = DriverSession.fromResponse(result);
     await _save(next);
@@ -279,9 +307,14 @@ class DriverAuth {
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     final value = bytes.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
-    return value.substring(0, 8) + '-' + value.substring(8, 12) + '-' +
-        value.substring(12, 16) + '-' + value.substring(16, 20) + '-' +
+    return value.substring(0, 8) +
+        '-' +
+        value.substring(8, 12) +
+        '-' +
+        value.substring(12, 16) +
+        '-' +
+        value.substring(16, 20) +
+        '-' +
         value.substring(20);
   }
 }
-

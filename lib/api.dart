@@ -3,9 +3,14 @@ import 'package:http/http.dart' as http;
 
 /// Driver-scoped API adapter. Routes are provisional pending backend integration.
 class ApiException implements Exception {
-  ApiException(this.message, this.statusCode);
+  ApiException(
+    this.message,
+    this.statusCode, {
+    this.isApplicationError = false,
+  });
   final String message;
   final int statusCode;
+  final bool isApplicationError;
   @override
   String toString() => message;
 }
@@ -15,8 +20,12 @@ class DriverApi {
   final String baseUrl;
   final String token;
 
-  Future<dynamic> request(String path,
-      {String method = 'GET', Map<String, dynamic>? body, Map<String,String>? headers}) async {
+  Future<dynamic> request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? body,
+    Map<String, String>? headers,
+  }) async {
     if (baseUrl.isEmpty) throw StateError('API URL is not configured');
     final req = http.Request(method, Uri.parse('$baseUrl$path'));
     req.headers.addAll({
@@ -26,9 +35,15 @@ class DriverApi {
     });
     if (body != null) req.body = jsonEncode(body);
     final http.Response res;
-    try { res = await (() async => http.Response.fromStream(await req.send()))()
-        .timeout(const Duration(seconds: 20)); }
-    catch (_) { throw StateError('Could not reach HireD. Check internet and server configuration.'); }
+    try {
+      res = await (() async => http.Response.fromStream(
+        await req.send(),
+      ))().timeout(const Duration(seconds: 20));
+    } catch (_) {
+      throw StateError(
+        'Could not reach HireD. Check internet and server configuration.',
+      );
+    }
     dynamic payload;
     try {
       payload = jsonDecode(res.body);
@@ -38,11 +53,15 @@ class DriverApi {
     if (res.statusCode >= 400 ||
         (payload is Map && payload['success'] == false)) {
       final error = payload is Map ? payload['error'] : null;
-      throw ApiException(error is Map
-          ? (error['message']?.toString() ?? 'Request failed')
-          : (payload is Map
-              ? (payload['message']?.toString() ?? 'Request failed')
-              : 'Request failed'), res.statusCode);
+      throw ApiException(
+        error is Map
+            ? (error['message']?.toString() ?? 'Request failed')
+            : (payload is Map
+                  ? (payload['message']?.toString() ?? 'Request failed')
+                  : 'Request failed'),
+        res.statusCode,
+        isApplicationError: error is Map && error['message'] is String,
+      );
     }
     return payload is Map ? (payload['data'] ?? payload) : payload;
   }
@@ -53,7 +72,7 @@ class DriverApi {
     req.headers['Authorization'] = 'Bearer $token';
     req.files.add(await http.MultipartFile.fromPath('file', filePath));
     final res = await http.Response.fromStream(await req.send());
-    if (res.statusCode >= 400) throw ApiException('Upload failed (${res.statusCode})', res.statusCode);
+    if (res.statusCode >= 400)
+      throw ApiException('Upload failed (${res.statusCode})', res.statusCode);
   }
 }
-

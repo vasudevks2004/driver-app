@@ -8,13 +8,16 @@ import 'api.dart';
 import 'auth.dart';
 import 'auth_validation.dart';
 import 'identity_auth.dart';
+import 'brand.dart';
+import 'onboarding.dart';
+import 'onboarding_screen.dart';
 
 const _primary = Color(0xFF5055F7);
 const _ink = Color(0xFF202331);
 const _muted = Color(0xFF687083);
 const _line = Color(0xFFE6E8F0);
 
-enum _AuthView { login, register, otp, activation }
+enum _AuthView { login, register, otp, activation, onboarding }
 
 class DriverAuthScreen extends StatefulWidget {
   const DriverAuthScreen({
@@ -22,9 +25,11 @@ class DriverAuthScreen extends StatefulWidget {
     required this.auth,
     required this.onAuthenticated,
     this.onDemo,
+    this.onboarding,
   });
 
   final DriverAuth auth;
+  final DriverOnboarding? onboarding;
   final Future<void> Function(DriverSession session) onAuthenticated;
   final VoidCallback? onDemo;
 
@@ -34,6 +39,8 @@ class DriverAuthScreen extends StatefulWidget {
 
 class _DriverAuthScreenState extends State<DriverAuthScreen> {
   final _form = GlobalKey<FormState>();
+  late final _onboarding = widget.onboarding ?? DriverOnboarding(widget.auth.identity.config);
+  IdentitySession? _applicantSession;
   final _phone = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
@@ -57,6 +64,10 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    if (_applicantSession != null) {
+      unawaited(widget.auth.identity.signOut(_applicantSession!.accessToken).catchError((_) {}));
+    }
+    if (widget.onboarding == null) _onboarding.dispose();
     for (final controller in [_phone, _email, _password, _name, _city, _code]) {
       controller.dispose();
     }
@@ -148,10 +159,21 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   Future<void> _verifyOtp() async {
     if (!_form.currentState!.validate()) return;
     await _run(() async {
-      final session = await widget.auth.verifyPhoneOtp(
-        _sentTo,
-        _code.text.trim(),
-      );
+      if (_registering) {
+        final identity = await widget.auth.verifyRegistrationOtp(_sentTo, _code.text.trim());
+        if (!mounted) {
+          await widget.auth.identity.signOut(identity.accessToken);
+          return;
+        }
+        _timer?.cancel();
+        setState(() {
+          _applicantSession = identity;
+          _view = _AuthView.onboarding;
+          _code.clear();
+        });
+        return;
+      }
+      final session = await widget.auth.verifyPhoneOtp(_sentTo, _code.text.trim());
       _code.clear();
       if (!mounted) return;
       await widget.onAuthenticated(session);
@@ -469,7 +491,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
             TextButton(
               key: const Key('open-register'),
               onPressed: _busy ? null : () => _navigate(_AuthView.register),
-              child: const Text('Create an account'),
+              child: const Text('Register as a new driver'),
             ),
           ],
         ),
@@ -489,10 +511,8 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
     children: [
       _title(
         'Drive with HireD.',
-        'Create your driver account. Start by verifying your mobile number.',
+        'Register as a new driver. Verify your mobile, then add your licence and selfie.',
       ),
-      _googleButton(),
-      _divider(),
       _label('Full name'),
       TextFormField(
         key: const Key('register-name'),
@@ -512,7 +532,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
       const SizedBox(height: 18),
       _phoneField(),
       const SizedBox(height: 18),
-      _label('City (optional)'),
+      _label('City'),
       TextFormField(
         key: const Key('register-city'),
         controller: _city,
@@ -525,7 +545,10 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
           'Your city',
           Icons.location_on_outlined,
         ).copyWith(counterText: ''),
+        validator: (value) => (value?.trim().length ?? 0) < 2 ? 'Enter your city' : null,
       ),
+      const SizedBox(height: 18),
+      const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.badge_outlined, color: _primary), title: Text('Next: licence & driver avatar'), subtitle: Text('Add licence details, front/back photos and a selfie. You can also share your licence through DigiLocker.')),
       const SizedBox(height: 14),
       CheckboxListTile(
         key: const Key('registration-acknowledgement'),
@@ -543,7 +566,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
       ),
       _errorBanner(),
       const SizedBox(height: 14),
-      _primaryButton('Create account', _sendOtp),
+      _primaryButton('Verify mobile & continue', _sendOtp),
       const SizedBox(height: 16),
       Center(
         child: TextButton(
@@ -593,7 +616,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
       _errorBanner(),
       const SizedBox(height: 24),
       _primaryButton(
-        _registering ? 'Verify & create account' : 'Verify & sign in',
+        _registering ? 'Verify & continue' : 'Verify & sign in',
         _verifyOtp,
       ),
       const SizedBox(height: 15),
@@ -665,7 +688,17 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         );
 
   @override
-  Widget build(BuildContext context) => PopScope(
+  Widget build(BuildContext context) => _view == _AuthView.onboarding
+    ? DriverOnboardingScreen(service: _onboarding, session: _applicantSession!,
+        fullName: _registrationName!, city: _registrationCity!, onClose: () async {
+          final session = _applicantSession;
+          _applicantSession = null;
+          if (session != null) {
+            try { await widget.auth.identity.signOut(session.accessToken); } catch (_) {}
+          }
+          if (mounted) _navigate(_AuthView.login);
+        })
+    : PopScope(
     canPop: _view == _AuthView.login && !_busy,
     onPopInvokedWithResult: (didPop, _) {
       if (!didPop && !_busy)
@@ -698,11 +731,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
                               ),
                         icon: const Icon(Icons.arrow_back, color: _ink),
                       ),
-                    SvgPicture.asset(
-                      'assets/hired-logo.svg',
-                      width: 108,
-                      height: 54,
-                    ),
+                    const HireDLogo(width: 128),
                     const Spacer(),
                     const Text(
                       'DRIVER',
@@ -733,6 +762,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
                           _AuthView.register => _register(),
                           _AuthView.otp => _otpPage(),
                           _AuthView.activation => _activationPage(),
+                          _AuthView.onboarding => const SizedBox.shrink(),
                         },
                       ),
                     ),

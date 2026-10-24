@@ -6,8 +6,9 @@ Flutter driver app for Android and iOS. HireD supplies drivers; the business or 
 
 - **Google:** native Google account chooser, Supabase token exchange, then HireD driver-profile verification.
 - **Mobile number:** SMS OTP, code verification, resend countdown and change-number controls. Login does not create an account.
-- **Create account:** full name, mobile number and optional city; registration verifies the number before completing. No password is required for phone accounts.
+- **Register as a new driver:** full name, mobile number and city; verify the number, then add licence number, date of birth, expiry, vehicle class, front/back photos and a camera selfie for the driver avatar. Submit the application for HireD review. No password is required for phone accounts.
 - **Email:** existing administrator-issued email/password login remains available.
+- **DigiLocker:** consent-based, server-side OAuth with PKCE and a single-use callback. An issued licence can replace manual licence photos. Live use requires approved requester credentials; missing configuration keeps photo upload available.
 - Sessions are stored securely only after the backend confirms a driver profile. New or unlinked identities see activation instructions before dashboard access.
 
 ## Run
@@ -30,6 +31,8 @@ flutter run --dart-define=ALLOW_DEMO=true
 ```
 
 Select **Explore demo** on the login screen. Sample duty `TRP-1028` can be started, a selfie captured, expenses logged, and closed with duty demo OTP `4826`. This code is only for the sample duty, never for authentication. Demo changes remain in memory.
+
+See [docs/DRIVER_ONBOARDING.md](docs/DRIVER_ONBOARDING.md) for private document storage, the onboarding service, DigiLocker credentials, and reviewer handoff. The HireD wordmark uses a transparent cropped SVG through one shared component.
 
 ## Provider setup still required
 

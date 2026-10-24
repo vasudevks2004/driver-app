@@ -1,0 +1,4 @@
+[functions.driver-onboarding]
+# Public OAuth callback shares this function. Every other route validates the
+# bearer with Auth /user and requires a confirmed phone inside the handler.
+verify_jwt = false

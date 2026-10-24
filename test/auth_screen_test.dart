@@ -101,10 +101,11 @@ void main() {
         find.byKey(const Key('phone-number')),
         '9876543210',
       );
-      await tap(tester, find.text('Create account'));
+      await tester.enterText(find.byKey(const Key('register-city')), 'Kochi');
+      await tap(tester, find.text('Verify mobile & continue'));
       expect(auth.sends, 0);
       await tap(tester, find.byKey(const Key('registration-acknowledgement')));
-      await tap(tester, find.text('Create account'));
+      await tap(tester, find.text('Verify mobile & continue'));
       expect(auth.registered, isTrue);
       expect(auth.phone, '+919876543210');
       expect(auth.name, 'Test Driver');

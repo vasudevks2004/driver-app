@@ -329,12 +329,42 @@ class DriverAuth {
       final receipt = await request('/drivers/me/operations/${entry.value}');
       if (_subject != subject)
         throw const DriverAuthException('The driver session changed.');
-      if (receipt is Map && receipt['committed'] == true)
-        await pending.acknowledge(baseUrl, subject, entry.key);
+      if (receipt is! Map)
+        throw const ApiException(
+          'The earlier action could not be confirmed.',
+          503,
+          uncertain: true,
+        );
+      if (receipt['committed'] != true && receipt['cancelled'] != true) {
+        Future<dynamic> cancel() => _api.request(
+          '/drivers/me/operations/${entry.value}/cancel',
+          method: 'POST',
+          body: {},
+          headers: {'Idempotency-Key': entry.value},
+        );
+        dynamic cancelled;
+        try {
+          cancelled = await cancel();
+        } on ApiException catch (error) {
+          if (error.statusCode != 401) rethrow;
+          await refresh();
+          if (_subject != subject)
+            throw const DriverAuthException('The driver session changed.');
+          cancelled = await cancel();
+        }
+        if (cancelled is! Map ||
+            cancelled['cancelled'] != true && cancelled['committed'] != true)
+          throw const ApiException(
+            'The earlier action could not be reconciled.',
+            503,
+            uncertain: true,
+          );
+      }
+      await pending.acknowledge(baseUrl, subject, entry.key);
     }
     if (unresolved.isNotEmpty) {
       throw const ApiException(
-        'An earlier action was reconciled or is still pending. Refresh the duty and retry its original details before entering another change.',
+        'The earlier action was reconciled. Refresh this duty and submit your intended change again.',
         409,
       );
     }

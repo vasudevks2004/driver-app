@@ -10,6 +10,15 @@ void main() {
     tester,
   ) async {
     final start = DateTime.now();
+    Future<void> tap(Finder target) async {
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(target);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
+
     await tester.pumpWidget(const HireDDevelopmentApp());
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('development-banner')), findsOneWidget);
@@ -17,13 +26,9 @@ void main() {
       find.byKey(const Key('phone-number')),
       previewPhone.substring(3),
     );
-    await tester.ensureVisible(find.text('Send OTP'));
-    await tester.tap(find.text('Send OTP'));
-    await tester.pumpAndSettle();
+    await tap(find.text('Send OTP'));
     await tester.enterText(find.byKey(const Key('phone-otp')), previewOtp);
-    await tester.ensureVisible(find.text('Verify & sign in'));
-    await tester.tap(find.text('Verify & sign in'));
-    await tester.pumpAndSettle();
+    await tap(find.text('Verify & sign in'));
     expect(find.byType(NavigationDestination), findsNWidgets(4));
     for (final label in ['Duties', 'Earnings', 'Profile', 'Home']) {
       await tester.tap(

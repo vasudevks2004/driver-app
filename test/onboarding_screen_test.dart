@@ -155,6 +155,21 @@ void main() {
     },
   );
 
+  testWidgets(
+    'an expired restored licence can be corrected without a date-picker crash',
+    (tester) async {
+      service.data.addAll({
+        'licence_number': 'KL071234567',
+        'licence_expiry': '2000-01-01',
+        'birth_date': '1995-01-01',
+      });
+      await open(tester);
+      await tap(tester, find.text('Licence expiry'));
+      await tap(tester, find.text('OK'));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('guided licence controls fit a narrow phone', (tester) async {
     await open(tester);
     expect(find.text('Your driving licence.'), findsOneWidget);

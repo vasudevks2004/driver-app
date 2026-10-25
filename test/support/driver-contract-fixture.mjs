@@ -2,7 +2,7 @@
 // It checks client encoding/recovery only. Real SQL, Worker, Auth authorization and
 // financial constraints are tested separately in the private shared repository.
 import http from 'node:http';
-const cases=new Map(),tokens=new Map(),receipts=new Map(),requests=[];let fault=null,objects=0,files=0,refreshCount=0;
+const cases=new Map(),tokens=new Map(),receipts=new Map(),cancelled=new Set(),requests=[];let fault=null,objects=0,files=0,refreshCount=0;
 const json=(res,status,value)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(JSON.stringify(value));};
 const server=http.createServer(async(req,res)=>{
  const url=new URL(req.url,'http://127.0.0.1'),path=url.pathname,chunks=[];for await(const chunk of req)chunks.push(chunk);const bytes=Buffer.concat(chunks);
@@ -20,11 +20,14 @@ const server=http.createServer(async(req,res)=>{
  requests.push({path,method:req.method,mime:req.headers['content-type'],key:req.headers['idempotency-key'],filename:req.headers['x-filename'],expiry:req.headers['x-expires-on']});
  const duty=()=>({id:c.tripId,status:c.status,company:'Contract Business',pickup:'Kochi',drop:'Aluva',selfie:c.selfie,expensesSubmitted:c.expensesSubmitted,noExpenses:c.noExpenses,expenses:[]});
  if(req.method==='GET'){
-  const receipt=/\/operations\/([0-9a-f-]{36})$/.exec(path);if(receipt)return data({committed:[...receipts.keys()].some(k=>k.startsWith(c.id+':')&&k.endsWith(':'+receipt[1]))});
+  const receipt=/\/operations\/([0-9a-f-]{36})$/.exec(path);if(receipt)return data({committed:[...receipts.keys()].some(k=>k.startsWith(c.id+':')&&k.endsWith(':'+receipt[1])),cancelled:cancelled.has(c.id+':'+receipt[1])});
   if(path.endsWith('/wallet'))return data({balance:c.journals?70.09:0,meaning:'outstanding_payable',transactions:c.journals?[{id:'journal',kind:'trip_credit',signedAmount:70.09,amount:70.09}]:[],nextCursor:null});
   if(target)return data(duty());if(path.endsWith('/drivers/me'))return data(c.profile);return data({trips:[duty()],activeCount:1,completedCount:0,nextCursor:null});
  }
  const key=req.headers['idempotency-key'];if(!/^[0-9a-f-]{36}$/.test(key||''))return deny('Retry key required');
+ const cancellation=/\/operations\/([0-9a-f-]{36})\/cancel$/.exec(path);if(cancellation){cancelled.add(c.id+':'+cancellation[1]);return data({committed:false,cancelled:true});}
+ if(cancelled.has(c.id+':'+key))return deny('Operation cancelled');
+ if(fault?.before&&path.endsWith(fault.suffix)){fault=null;res.destroy();return;}
  const signature=c.id+':'+path+':'+key;if(receipts.has(signature))return data(receipts.get(signature));
  if(path.endsWith('/selfie')){
   if(req.headers['content-type']!=='image/jpeg'||bytes[0]!==255||bytes[1]!==216)return deny('Photo required',415);

@@ -293,15 +293,20 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
 
   Future<void> _date(bool birth) async {
     final now = DateUtils.dateOnly(DateTime.now());
+    final first = birth ? DateTime(1900) : now;
+    final last = birth
+        ? now.subtract(const Duration(days: 1))
+        : DateTime(now.year + 40);
+    var initial = birth
+        ? (_birthDate ?? DateTime(now.year - 25, now.month, now.day))
+        : (_expiry ?? now.add(const Duration(days: 365)));
+    if (initial.isBefore(first)) initial = first;
+    if (initial.isAfter(last)) initial = last;
     final selected = await showDatePicker(
       context: context,
-      initialDate: birth
-          ? (_birthDate ?? DateTime(now.year - 25, now.month, now.day))
-          : (_expiry ?? now.add(const Duration(days: 365))),
-      firstDate: birth ? DateTime(1900) : now,
-      lastDate: birth
-          ? now.subtract(const Duration(days: 1))
-          : DateTime(now.year + 40),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
     );
     if (selected != null && mounted)
       setState(() {

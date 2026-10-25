@@ -304,6 +304,42 @@ void main() {
   );
 
   test(
+    'an uncommitted interrupted upload can be replaced without leaving a stuck retry',
+    () async {
+      final data = await control('/__case', {}),
+          store = MemoryOperationStorage(),
+          auth = authFor(data, store),
+          trip = data['tripId'];
+      final first = File('${temp.path}/lost-original.jpg'),
+          second = File('${temp.path}/picked-again.jpg');
+      await first.writeAsBytes([255, 216, 255, 1]);
+      await second.writeAsBytes([255, 216, 255, 2]);
+      await control('/__fault', {'suffix': '/selfie', 'before': true});
+      await expectLater(
+        auth.upload('/trips/$trip/selfie', first.path),
+        throwsA(isA<ApiException>()),
+      );
+      await expectLater(
+        auth.upload('/trips/$trip/selfie', second.path),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.statusCode,
+            'requires confirmation of reconciliation',
+            409,
+          ),
+        ),
+      );
+      final before = await control('/__state?tripId=$trip');
+      await auth.upload('/trips/$trip/selfie', second.path);
+      expect(
+        (await control('/__state?tripId=$trip'))['objects'],
+        (before['objects'] as int) + 1,
+      );
+      auth.dispose();
+    },
+  );
+
+  test(
     'no-expenses survives refresh, other-driver access and expired sessions are denied',
     () async {
       final one = await control('/__case', {}),

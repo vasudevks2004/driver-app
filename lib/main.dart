@@ -1037,7 +1037,7 @@ class _DriverHomeState extends State<DriverHome> {
             ),
             const SizedBox(height: 18),
             SizedBox(
-              height: 100,
+              height: MediaQuery.textScalerOf(context).scale(100),
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: 14,

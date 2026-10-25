@@ -976,6 +976,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                         onPressed: _busy
                             ? null
                             : () {
+                                FocusScope.of(context).unfocus();
                                 if (_step == 0 && _validateLicence())
                                   _go(1);
                                 else if (_step == 1 && _validateIdentity())

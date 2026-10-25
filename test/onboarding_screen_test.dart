@@ -164,7 +164,7 @@ void main() {
         'birth_date': '1995-01-01',
       });
       await open(tester);
-      await tap(tester, find.text('Licence expiry'));
+      await tap(tester, find.textContaining('Licence expiry'));
       await tap(tester, find.text('OK'));
       expect(tester.takeException(), isNull);
     },

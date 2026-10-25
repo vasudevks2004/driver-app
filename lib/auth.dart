@@ -294,6 +294,8 @@ class DriverAuth {
     );
     for (final entry in unresolved.entries) {
       final receipt = await request('/drivers/me/operations/${entry.value}');
+      if (_subject != subject)
+        throw const DriverAuthException('The driver session changed.');
       if (receipt is Map && receipt['committed'] == true)
         await pending.acknowledge(baseUrl, subject, entry.key);
     }

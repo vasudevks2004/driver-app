@@ -58,3 +58,46 @@ jobs:
         run: npx --yes deno@2.9.6 check supabase/functions/driver-onboarding/index.ts supabase/functions/send-sms-msg91/index.ts
       - name: Test onboarding service over HTTP stand-ins
         run: npx --yes node@24.22.1 --experimental-strip-types --test supabase/functions/driver-onboarding/service.test.mjs supabase/functions/send-sms-msg91/service.test.mjs
+
+  android-device:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install pinned Flutter
+        run: |
+          git init "$RUNNER_TEMP/hired-flutter"
+          git -C "$RUNNER_TEMP/hired-flutter" remote add origin https://github.com/flutter/flutter.git
+          git -C "$RUNNER_TEMP/hired-flutter" fetch --depth 1 origin adc901062556672b4138e18a4dc62a4be8f4b3c2
+          git -C "$RUNNER_TEMP/hired-flutter" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
+          echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
+      - name: Prepare native app
+        run: |
+          flutter config --jdk-dir "$JAVA_HOME_17_X64"
+          flutter pub get
+          flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$RUNNER_TEMP/hired-native"
+          python3 scripts/prepare-native.py "$RUNNER_TEMP/hired-native"
+      - name: Boot Android 35 emulator
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'system-images;android-35;google_apis;x86_64'
+          echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name hired-test --package 'system-images;android-35;google_apis;x86_64'
+          sudo chmod 666 /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd hired-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > "$RUNNER_TEMP/hired-emulator.log" 2>&1 &
+          adb wait-for-device
+          for attempt in $(seq 1 120); do
+            if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then break; fi
+            sleep 2
+          done
+          test "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1'
+          adb shell input keyevent 82
+      - name: Native preview smoke test
+        run: flutter test integration_test/device_smoke_test.dart -d emulator-5554
+      - name: Save emulator diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: android-emulator-diagnostics
+          path: ${{ runner.temp }}/hired-emulator.log
+          retention-days: 7

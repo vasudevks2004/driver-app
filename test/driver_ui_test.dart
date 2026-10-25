@@ -138,12 +138,14 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final flutterRoot = Platform.environment['HIRED_FLUTTER_ROOT'];
     if (flutterRoot != null) {
-      final bytes = await File(
-        '$flutterRoot/bin/cache/artifacts/material_fonts/Roboto-Regular.ttf',
-      ).readAsBytes();
-      final loader = FontLoader('Roboto')
-        ..addFont(Future.value(ByteData.sublistView(bytes)));
-      await loader.load();
+      await tester.runAsync(() async {
+        final bytes = await File(
+          '$flutterRoot/bin/cache/artifacts/material_fonts/Roboto-Regular.ttf',
+        ).readAsBytes();
+        final loader = FontLoader('Roboto')
+          ..addFont(Future.value(ByteData.sublistView(bytes)));
+        await loader.load();
+      });
     }
     final boundary = GlobalKey();
     Widget shell(Widget child) => RepaintBoundary(

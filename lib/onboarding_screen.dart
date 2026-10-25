@@ -825,7 +825,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       HireDCard(
         child: Column(
           children: [
-            const HireDBadge('Review pending', color: HireDStyle.success),
+            const HireDBadge('Review pending', color: Color(0xFF946200)),
             const SizedBox(height: 16),
             const Text(
               'Application reference',
@@ -921,9 +921,12 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                       ),
                     ],
                   ] else ...[
-                    const HireDBadge(
-                      'Mobile verified',
-                      color: HireDStyle.success,
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: HireDBadge(
+                        'Mobile verified',
+                        color: HireDStyle.success,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     HireDSteps(

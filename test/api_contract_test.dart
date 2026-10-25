@@ -209,11 +209,17 @@ void main() {
           body: {'amount': '12', 'description': 'Updated parking'},
         ),
         throwsA(
-          isA<ApiException>().having(
-            (e) => e.statusCode,
-            'requires review after reconciliation',
-            409,
-          ),
+          isA<ReconciledOperation>()
+              .having(
+                (e) => e.statusCode,
+                'requires review after reconciliation',
+                409,
+              )
+              .having(
+                (e) => e.previousCommitted,
+                'earlier expense confirmed',
+                true,
+              ),
         ),
       );
       expect((await control('/__state?tripId=$trip'))['expenses'], 1);

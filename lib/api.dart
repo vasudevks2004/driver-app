@@ -20,6 +20,17 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+class ReconciledOperation extends ApiException {
+  const ReconciledOperation({required this.previousCommitted})
+    : super(
+        previousCommitted
+            ? 'Your earlier change was saved. Refresh and review it before adding another.'
+            : 'The interrupted request was cancelled. Submit your intended change again.',
+        409,
+      );
+  final bool previousCommitted;
+}
+
 const driverUploadLimit = 5 * 1024 * 1024;
 String? driverFileType(Uint8List bytes) {
   if (bytes.length >= 3 &&

@@ -90,7 +90,16 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
                 ],
         });
       } else {
-        await state.repository.expense(duty.id, title, value);
+        try {
+          await state.repository.expense(duty.id, title, value);
+        } on ReconciledOperation catch (error) {
+          if (error.previousCommitted) {
+            description.clear();
+            amount.clear();
+            await _updated(duty.id);
+          }
+          rethrow;
+        }
         await _updated(duty.id);
       }
       description.clear();

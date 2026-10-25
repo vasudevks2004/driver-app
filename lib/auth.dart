@@ -325,6 +325,7 @@ class DriverAuth {
       group: group,
       except: fingerprint,
     );
+    var previousCommitted = false;
     for (final entry in unresolved.entries) {
       final receipt = await request('/drivers/me/operations/${entry.value}');
       if (_subject != subject)
@@ -335,6 +336,7 @@ class DriverAuth {
           503,
           uncertain: true,
         );
+      previousCommitted = previousCommitted || receipt['committed'] == true;
       if (receipt['committed'] != true && receipt['cancelled'] != true) {
         Future<dynamic> cancel() => _api.request(
           '/drivers/me/operations/${entry.value}/cancel',
@@ -359,14 +361,13 @@ class DriverAuth {
             503,
             uncertain: true,
           );
+        previousCommitted =
+            previousCommitted || (cancelled as Map)['committed'] == true;
       }
       await pending.acknowledge(baseUrl, subject, entry.key);
     }
     if (unresolved.isNotEmpty) {
-      throw const ApiException(
-        'The earlier action was reconciled. Refresh this duty and submit your intended change again.',
-        409,
-      );
+      throw ReconciledOperation(previousCommitted: previousCommitted);
     }
     return pending.begin(baseUrl, subject, fingerprint, group: group);
   }

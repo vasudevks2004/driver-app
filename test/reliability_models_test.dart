@@ -104,6 +104,38 @@ void main() {
       expect(await first.begin('server', 'actor', hash), isNotEmpty);
     },
   );
+  test(
+    'unresolved changes block another payload in the same operation group',
+    () async {
+      final store = MemoryOperationStorage(),
+          pending = PendingOperations(storage: store);
+      final key = await pending.begin(
+        'api',
+        'driver',
+        'first',
+        group: 'expense',
+      );
+      expect(
+        (await PendingOperations(
+          storage: store,
+        ).unresolved('api', 'driver', group: 'expense'))['first'],
+        key,
+      );
+      await expectLater(
+        pending.begin('api', 'driver', 'edited', group: 'expense'),
+        throwsStateError,
+      );
+      expect(
+        await pending.begin('api', 'driver', 'first', group: 'expense'),
+        key,
+      );
+      await pending.acknowledge('api', 'driver', 'first');
+      expect(
+        await pending.begin('api', 'driver', 'edited', group: 'expense'),
+        isNot(key),
+      );
+    },
+  );
   test('concurrent matching actions share one pending key', () async {
     final pending = PendingOperations(storage: MemoryOperationStorage());
     final keys = await Future.wait(

@@ -280,6 +280,32 @@ class DriverAuth {
     return id;
   }
 
+  Future<String> _beginOperation(
+    String method,
+    String path,
+    String fingerprint,
+  ) async {
+    final subject = _subject, group = operationFingerprint(method, path, null);
+    final unresolved = await pending.unresolved(
+      baseUrl,
+      subject,
+      group: group,
+      except: fingerprint,
+    );
+    for (final entry in unresolved.entries) {
+      final receipt = await request('/drivers/me/operations/${entry.value}');
+      if (receipt is Map && receipt['committed'] == true)
+        await pending.acknowledge(baseUrl, subject, entry.key);
+    }
+    if (unresolved.isNotEmpty) {
+      throw const ApiException(
+        'An earlier action was reconciled or is still pending. Refresh the duty and retry its original details before entering another change.',
+        409,
+      );
+    }
+    return pending.begin(baseUrl, subject, fingerprint, group: group);
+  }
+
   Future<dynamic> request(
     String path, {
     String method = 'GET',
@@ -290,7 +316,7 @@ class DriverAuth {
     final fingerprint = operationFingerprint(method, path, body);
     final key = method == 'GET'
         ? null
-        : await pending.begin(baseUrl, subject, fingerprint);
+        : await _beginOperation(method, path, fingerprint);
     Future<dynamic> send() => _api.request(
       path,
       method: method,
@@ -331,7 +357,7 @@ class DriverAuth {
       'filename': filePath.replaceAll('\\', '/').split('/').last,
       'expiresOn': expiresOn ?? '',
     });
-    final key = await pending.begin(baseUrl, subject, fingerprint);
+    final key = await _beginOperation('UPLOAD', path, fingerprint);
     Future<void> send() =>
         _api.upload(path, filePath, requestKey: key, expiresOn: expiresOn);
     try {

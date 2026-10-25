@@ -20,6 +20,7 @@ const server=http.createServer(async(req,res)=>{
  requests.push({path,method:req.method,mime:req.headers['content-type'],key:req.headers['idempotency-key'],filename:req.headers['x-filename'],expiry:req.headers['x-expires-on']});
  const duty=()=>({id:c.tripId,status:c.status,company:'Contract Business',pickup:'Kochi',drop:'Aluva',selfie:c.selfie,expensesSubmitted:c.expensesSubmitted,noExpenses:c.noExpenses,expenses:[]});
  if(req.method==='GET'){
+  const receipt=/\/operations\/([0-9a-f-]{36})$/.exec(path);if(receipt)return data({committed:[...receipts.keys()].some(k=>k.startsWith(c.id+':')&&k.endsWith(':'+receipt[1]))});
   if(path.endsWith('/wallet'))return data({balance:c.journals?70.09:0,meaning:'outstanding_payable',transactions:c.journals?[{id:'journal',kind:'trip_credit',signedAmount:70.09,amount:70.09}]:[],nextCursor:null});
   if(target)return data(duty());if(path.endsWith('/drivers/me'))return data(c.profile);return data({trips:[duty()],activeCount:1,completedCount:0,nextCursor:null});
  }

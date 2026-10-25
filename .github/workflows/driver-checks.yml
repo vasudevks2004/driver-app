@@ -40,6 +40,8 @@ jobs:
           path: build/ui-previews/*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Select supported JDK 17 for Android Gradle
+        run: flutter config --jdk-dir "$JAVA_HOME_17_X64"
       - name: Generate native shells without replacing app source
         run: |
           flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$RUNNER_TEMP/hired-native"

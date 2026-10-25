@@ -77,19 +77,49 @@ class PendingOperations {
     }
   }
 
-  Future<String> begin(String server, String subject, String fingerprint) =>
-      _serial(() async {
-        final scope = _scope(server, subject), values = await _read(scope);
-        if (values[fingerprint] is String) return values[fingerprint] as String;
-        if (values.length >= 100)
-          throw StateError(
-            'Too many changes need confirmation. Contact HireD support.',
-          );
-        final key = newRequestKey();
-        values[fingerprint] = key;
-        await _storage.write(scope, jsonEncode(values));
-        return key;
-      });
+  Future<Map<String, String>> unresolved(
+    String server,
+    String subject, {
+    String? group,
+    String? except,
+  }) => _serial(() async {
+    final values = await _read(_scope(server, subject));
+    return {
+      for (final entry in values.entries)
+        if (entry.key != except &&
+            (group == null ||
+                entry.value is Map && entry.value['group'] == group))
+          entry.key: entry.value is String
+              ? entry.value as String
+              : (entry.value as Map)['key'] as String,
+    };
+  });
+  Future<String> begin(
+    String server,
+    String subject,
+    String fingerprint, {
+    String? group,
+  }) => _serial(() async {
+    final scope = _scope(server, subject),
+        values = await _read(scope),
+        old = values[fingerprint];
+    if (old is String) return old;
+    if (old is Map) return old['key'] as String;
+    if (group != null &&
+        values.values.any((v) => v is Map && v['group'] == group)) {
+      throw StateError(
+        'An earlier action still needs confirmation. Retry its original details or reconnect to reconcile it.',
+      );
+    }
+    if (values.length >= 100)
+      throw StateError(
+        'Too many changes need confirmation. Contact HireD support.',
+      );
+    final key = newRequestKey();
+    values[fingerprint] = {'key': key, if (group != null) 'group': group};
+    await _storage.write(scope, jsonEncode(values));
+    return key;
+  });
   Future<void> acknowledge(String server, String subject, String fingerprint) =>
       _serial(() async {
         final scope = _scope(server, subject), values = await _read(scope);

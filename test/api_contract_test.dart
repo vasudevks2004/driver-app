@@ -166,6 +166,41 @@ void main() {
     timeout: const Timeout(Duration(seconds: 80)),
   );
   test(
+    'editing an ambiguous expense reconciles its receipt before another write',
+    () async {
+      final value = await control('/__case', {}),
+          store = MemoryOperationStorage(),
+          auth = authFor(value, store),
+          trip = value['tripId'];
+      await auth.request('/trips/$trip/start', method: 'POST', body: {});
+      await control('/__fault', {'suffix': '/expenses'});
+      await expectLater(
+        auth.request(
+          '/trips/$trip/expenses',
+          method: 'POST',
+          body: {'amount': '10', 'description': 'Parking'},
+        ),
+        throwsA(isA<ApiException>()),
+      );
+      await expectLater(
+        auth.request(
+          '/trips/$trip/expenses',
+          method: 'POST',
+          body: {'amount': '12', 'description': 'Updated parking'},
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.statusCode,
+            'requires review after reconciliation',
+            409,
+          ),
+        ),
+      );
+      expect((await control('/__state?tripId=$trip'))['expenses'], 1);
+      auth.dispose();
+    },
+  );
+  test(
     'no-expenses survives refresh, other-driver access and expired sessions are denied',
     () async {
       final one = await control('/__case', {}),

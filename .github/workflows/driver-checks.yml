@@ -87,7 +87,7 @@ jobs:
           echo no | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name hired-test --package 'system-images;android-35;google_apis;x86_64'
           sudo chmod 666 /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd hired-test -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot > "$RUNNER_TEMP/hired-emulator.log" 2>&1 &
-          adb wait-for-device
+          timeout 120s adb wait-for-device || { cat "$RUNNER_TEMP/hired-emulator.log"; exit 1; }
           for attempt in $(seq 1 120); do
             if [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = '1' ]; then break; fi
             sleep 2

@@ -166,6 +166,9 @@ void main() {
       await tester.pumpAndSettle();
       final render =
           boundary.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      // Repaint the entire root so retained layers are included after tab changes.
+      render.markNeedsPaint();
+      await tester.pump();
       await tester.runAsync(() async {
         final image = await render.toImage(pixelRatio: 2);
         final bytes = (await image.toByteData(

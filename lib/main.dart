@@ -893,7 +893,7 @@ class _DriverHomeState extends State<DriverHome> {
                 Expanded(
                   child: Text(
                     'Wallet balance',
-                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                    style: TextStyle(color: Colors.white, fontSize: 13),
                   ),
                 ),
               ],

@@ -84,12 +84,29 @@ abstract final class HireDStyle {
           ),
         ),
       ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) =>
+                states.contains(WidgetState.selected) ? tint : Colors.white,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected) ? primary : muted,
+          ),
+        ),
+      ),
       navigationBarTheme: NavigationBarThemeData(
         height: 76,
         backgroundColor: Colors.white,
         elevation: 0,
         indicatorColor: tint,
         surfaceTintColor: Colors.transparent,
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            color: states.contains(WidgetState.selected) ? primary : muted,
+            size: 24,
+          ),
+        ),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 11,

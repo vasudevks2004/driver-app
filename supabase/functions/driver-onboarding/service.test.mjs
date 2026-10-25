@@ -82,16 +82,26 @@ test('manual registration validates ownership, private images, consent and submi
   assert.equal((await e.call('/application',{token:'invalid'})).status,401);
   await e.open();
   assert.equal((await e.call('/application',{token:'other'})).status,404);
-  const fields={licence_number:'KL07 20201234567',birth_date:'1995-01-15',licence_expiry:'2035-01-15',vehicle_class:'LMV',consent:true};
+  const fields={licence_number:'KL07 20201234567',aadhaar_number:'2345 6789 0123',birth_date:'1995-01-15',licence_expiry:'2035-01-15',vehicle_class:'LMV',consent:true};
   assert.equal((await e.call('/submit',{method:'POST',body:fields})).status,400);
   assert.equal((await e.call('/documents/selfie',{method:'POST',body:Buffer.from('not an image'),mime:'image/jpeg'})).status,400);
-  for(const kind of ['selfie','licence_front','licence_back']) {
+  for(const kind of ['selfie','licence_front','licence_back','aadhaar']) {
     assert.equal((await e.call(`/documents/${kind}`,{method:'POST',body:jpeg,mime:'image/jpeg'})).status,200);
   }
-  assert.equal(e.objects.size,3);
+  assert.equal(e.objects.size,4);
   assert.equal((await e.call('/submit',{method:'POST',body:{...fields,consent:false}})).status,400);
   const submitted=await e.call('/submit',{method:'POST',body:fields});
-  assert.equal((await submitted.json()).status,'submitted');
+  const snapshot = await submitted.json();
+  assert.equal(snapshot.status,'submitted');
+  assert.equal(snapshot.aadhaar_uploaded,true);
+  assert.equal(snapshot.aadhaar_last4,'0123');
+  assert.equal(snapshot.aadhaar_number,undefined);
+  assert.equal(snapshot.aadhaar_path,undefined);
+  assert.equal(e.rows.get(userId).aadhaar_number,'234567890123');
+  assert.equal(e.rows.get(userId).consent_version,'driver-onboarding-v2');
+  const reopened = await (await e.call('/application')).json();
+  assert.equal(reopened.aadhaar_number,undefined);
+  assert.equal(reopened.aadhaar_last4,'0123');
   assert.equal((await e.call('/documents/selfie',{method:'POST',body:jpeg,mime:'image/jpeg'})).status,409);
   assert.equal((await e.call('/submit',{method:'POST',body:fields})).status,200);
   assert.ok(e.calls.some(c=>c.path==='/auth/v1/user'));
@@ -139,4 +149,28 @@ test('unconfigured DigiLocker gives honest setup message and rejects arbitrary p
   assert.equal(governmentUrl('http://digilocker.gov.in/oauth'),false);
   assert.equal(governmentUrl('https://digilocker.gov.in:444/oauth'),false);
   assert.equal(governmentUrl('https://digilocker.meripehchaan.gov.in/public/oauth2/1/authorize'),true);
+}));
+
+// Format checking is not UIDAI authentication. Test data is deliberately synthetic.
+test('Aadhaar requires a valid number and owner-uploaded photo and stays masked on every response', async()=>environment(async e=>{
+  await e.open();
+  for (const kind of ['selfie','licence_front','licence_back']) {
+    assert.equal((await e.call(`/documents/${kind}`, {method:'POST',body:jpeg,mime:'image/jpeg'})).status,200);
+  }
+  const fields={licence_number:'KL07 20201234567',aadhaar_number:'234567890123',birth_date:'1995-01-15',licence_expiry:'2035-01-15',vehicle_class:'LMV',consent:true};
+  assert.equal((await e.call('/submit',{method:'POST',body:fields})).status,400);
+  assert.equal(e.rows.get(userId).status,'draft');
+  assert.equal((await e.call('/documents/aadhaar',{method:'POST',body:jpeg,mime:'image/jpeg',token:'other'})).status,404);
+  assert.equal((await e.call('/documents/aadhaar',{method:'POST',body:Buffer.from('pdf-or-executable'),mime:'image/jpeg'})).status,400);
+  const imageResult=await e.call('/documents/aadhaar',{method:'POST',body:jpeg,mime:'image/jpeg'});
+  assert.equal((await imageResult.json()).aadhaar_uploaded,true);
+  for(const number of ['',null,'123456789012','23456789012','23456789012a','2345678901234']) {
+    assert.equal((await e.call('/submit',{method:'POST',body:{...fields,aadhaar_number:number}})).status,400);
+    assert.equal(e.rows.get(userId).status,'draft');
+  }
+  const saved=await e.call('/submit',{method:'POST',body:fields});
+  assert.equal(saved.status,200);
+  const raw=await saved.text();
+  assert.equal(raw.includes(fields.aadhaar_number),false);
+  assert.equal(JSON.parse(raw).aadhaar_last4,'0123');
 }));

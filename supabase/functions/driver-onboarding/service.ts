@@ -33,6 +33,8 @@ function snapshot(row: Row): Row {
   return { id: row.id, status: row.status, full_name: row.full_name, city: row.city,
     selfie_uploaded: !!row.selfie_path, licence_front_uploaded: !!row.licence_front_path,
     licence_back_uploaded: !!row.licence_back_path, digilocker_status: row.digilocker_status,
+    aadhaar_uploaded: !!row.aadhaar_path,
+    aadhaar_last4: typeof row.aadhaar_number === 'string' ? row.aadhaar_number.slice(-4) : null,
     submitted_at: row.submitted_at };
 }
 function text(value: unknown, min: number, max: number): string {
@@ -212,7 +214,7 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
       if (app.status !== 'draft') throw new PublicError(409, 'This application has already been submitted.');
       if (route.startsWith('/documents/') && req.method === 'POST') {
         const kind = route.substring('/documents/'.length);
-        if (!['selfie', 'licence_front', 'licence_back'].includes(kind)) throw new PublicError(400, 'Choose a supported document.');
+        if (!['selfie', 'licence_front', 'licence_back', 'aadhaar'].includes(kind)) throw new PublicError(400, 'Choose a supported document.');
         const bytes = await limitedBytes(req), mime = imageType(bytes);
         if (!mime || req.headers.get('content-type') !== mime) throw new PublicError(400, 'Choose a JPG or PNG image.');
         const path = `${user.id}/${app.id}/${kind}-${crypto.randomUUID()}.${mime === 'image/png' ? 'png' : 'jpg'}`;
@@ -242,6 +244,9 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
       if (route === '/submit' && req.method === 'POST') {
         const input = await body(req);
         const number = text(input.licence_number, 6, 30).toUpperCase();
+        const aadhaar = typeof input.aadhaar_number === 'string' ? input.aadhaar_number.replace(/\s/g, '') : '';
+        if (!/^[2-9][0-9]{11}$/.test(aadhaar)) throw new PublicError(400, 'Enter a valid 12-digit Aadhaar number.');
+        if (!app.aadhaar_path) throw new PublicError(400, 'Add a clear photo of your Aadhaar card.');
         if (!/^[A-Z0-9][A-Z0-9 /-]{5,29}$/.test(number) || !/[0-9]/.test(number)) throw new PublicError(400, 'Check your driving licence number.');
         const date = (value: unknown): string => {
           if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10) !== value) throw new PublicError(400, 'Check your document dates.');
@@ -252,7 +257,8 @@ export function createHandler(config: Config, transport: typeof fetch = fetch): 
         if (!app.selfie_path || (!app.digilocker_document_path && (!app.licence_front_path || !app.licence_back_path))) throw new PublicError(400, 'Add your selfie and both licence photos, or share your licence through DigiLocker.');
         if (input.consent !== true) throw new PublicError(400, 'Agree to document review and profile photo use before submitting.');
         return json(snapshot(await update(app, { birth_date: birth, licence_number: number, licence_expiry: expiry,
-          vehicle_class: input.vehicle_class, status: 'submitted', consent_version: 'driver-onboarding-v1',
+          aadhaar_number: aadhaar,
+          vehicle_class: input.vehicle_class, status: 'submitted', consent_version: 'driver-onboarding-v2',
           consented_at: new Date().toISOString(), submitted_at: new Date().toISOString() })));
       }
       return json({message: 'Endpoint not found.'}, 404);

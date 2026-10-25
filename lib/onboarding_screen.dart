@@ -5,16 +5,24 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'brand.dart';
+import 'design.dart';
 import 'identity_auth.dart';
 import 'onboarding.dart';
 
 class DriverOnboardingScreen extends StatefulWidget {
-  const DriverOnboardingScreen({super.key, required this.service, required this.session,
-    required this.fullName, required this.city, required this.onClose, this.pickImage, this.openBrowser});
+  const DriverOnboardingScreen({
+    super.key,
+    required this.service,
+    required this.session,
+    required this.fullName,
+    required this.city,
+    required this.onClose,
+    this.pickImage,
+    this.openBrowser,
+  });
   final DriverOnboarding service;
   final IdentitySession session;
-  final String fullName;
-  final String city;
+  final String fullName, city;
   final Future<void> Function() onClose;
   final Future<Uint8List?> Function(String kind, ImageSource source)? pickImage;
   final Future<bool> Function(Uri uri)? openBrowser;
@@ -23,17 +31,22 @@ class DriverOnboardingScreen extends StatefulWidget {
   State<DriverOnboardingScreen> createState() => _DriverOnboardingScreenState();
 }
 
-class _DriverOnboardingScreenState extends State<DriverOnboardingScreen> with WidgetsBindingObserver {
-  final _form = GlobalKey<FormState>();
+class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
+    with WidgetsBindingObserver {
+  final _licenceForm = GlobalKey<FormState>();
+  final _identityForm = GlobalKey<FormState>();
   final _licence = TextEditingController();
+  final _aadhaar = TextEditingController();
+  final _scroll = ScrollController();
   DriverApplication? _application;
-  DateTime? _birthDate;
-  DateTime? _expiry;
+  DateTime? _birthDate, _expiry;
   String _vehicleClass = 'LMV';
   Uint8List? _selfie;
-  bool _busy = false;
-  bool _consent = false;
-  bool _digiPending = false;
+  int _step = 0;
+  bool _busy = false,
+      _consent = false,
+      _digiPending = false,
+      _showAadhaar = false;
   String? _error;
 
   @override
@@ -47,31 +60,67 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen> with Wi
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _licence.dispose();
+    _aadhaar.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _digiPending && !_busy) _refresh();
+    if (state == AppLifecycleState.resumed && _digiPending && !_busy)
+      _refresh();
+    // Do not leave a revealed identity number on the app switcher's next frame.
+    if (state == AppLifecycleState.inactive && _showAadhaar && mounted)
+      setState(() => _showAadhaar = false);
   }
 
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
-    setState(() { _busy = true; _error = null; });
-    try { await action(); }
-    catch (e) { if (mounted) setState(() => _error = e is DriverAuthException ? e.message : 'We could not complete that step. Please retry.'); }
-    finally { if (mounted) setState(() => _busy = false); }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await action();
+    } catch (e) {
+      if (mounted)
+        setState(
+          () => _error = e is DriverAuthException
+              ? e.message
+              : 'We could not complete that step. Please retry.',
+        );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _load() => _run(() async {
-    final application = await widget.service.open(widget.session.accessToken, name: widget.fullName, city: widget.city);
+    final application = await widget.service.open(
+      widget.session.accessToken,
+      name: widget.fullName,
+      city: widget.city,
+    );
     if (mounted) setState(() => _application = application);
   });
 
   Future<void> _refresh() => _run(() async {
     final application = await widget.service.status(widget.session.accessToken);
-    if (mounted) setState(() { _application = application; _digiPending = application.digiLockerStatus == 'pending'; });
+    if (mounted)
+      setState(() {
+        _application = application;
+        _digiPending = application.digiLockerStatus == 'pending';
+      });
   });
+
+  void _go(int step) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _step = step;
+      _error = null;
+      _showAadhaar = false;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
 
   Future<void> _pick(String kind, ImageSource source) => _run(() async {
     Uint8List? bytes;
@@ -79,168 +128,893 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen> with Wi
       bytes = await widget.pickImage!(kind, source);
     } else {
       try {
-        final image = await ImagePicker().pickImage(source: source,
-          preferredCameraDevice: kind == 'selfie' ? CameraDevice.front : CameraDevice.rear,
-          maxWidth: 1600, maxHeight: 1600, imageQuality: 85, requestFullMetadata: false);
+        final image = await ImagePicker().pickImage(
+          source: source,
+          preferredCameraDevice: kind == 'selfie'
+              ? CameraDevice.front
+              : CameraDevice.rear,
+          maxWidth: 1600,
+          maxHeight: 1600,
+          imageQuality: 85,
+          requestFullMetadata: false,
+        );
         if (image != null) {
-          if (await image.length() > maxDriverImageBytes) throw const DriverAuthException('Choose an image smaller than 6 MB.');
+          if (await image.length() > maxDriverImageBytes)
+            throw const DriverAuthException(
+              'Choose an image smaller than 6 MB.',
+            );
           bytes = await image.readAsBytes();
         }
       } on PlatformException {
-        throw const DriverAuthException('Camera or photo access is unavailable. Allow access in your device settings and try again.');
+        throw const DriverAuthException(
+          'Camera or photo access is unavailable. Allow access in your device settings and try again.',
+        );
       }
     }
     if (bytes == null) return;
-    final application = await widget.service.upload(widget.session.accessToken, kind, bytes);
-    if (mounted) setState(() { _application = application; if (kind == 'selfie') _selfie = bytes; });
+    final application = await widget.service.upload(
+      widget.session.accessToken,
+      kind,
+      bytes,
+    );
+    if (mounted)
+      setState(() {
+        _application = application;
+        if (kind == 'selfie') _selfie = bytes;
+      });
   });
 
   Future<void> _chooseDocument(String kind) async {
-    final source = await showModalBottomSheet<ImageSource>(context: context,
-      builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        ListTile(leading: const Icon(Icons.camera_alt_outlined), title: const Text('Take a photo'), onTap: () => Navigator.pop(context, ImageSource.camera)),
-        ListTile(leading: const Icon(Icons.photo_library_outlined), title: const Text('Choose from photos'), onTap: () => Navigator.pop(context, ImageSource.gallery)),
-      ])));
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Take a photo'),
+                onTap: () => Navigator.pop(context, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from photos'),
+                onTap: () => Navigator.pop(context, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
     if (source != null && mounted) await _pick(kind, source);
   }
 
   Future<void> _connectDigiLocker() async {
-    final consent = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
-      title: const Text('Share your driving licence?'),
-      content: const Text('DigiLocker will ask for your permission to share an issued driving licence with HireD for driver onboarding. You sign in on the government website. You can cancel and upload licence photos instead.'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Continue to DigiLocker'))],
-    ));
+    final consent = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Share your driving licence?'),
+        content: const Text(
+          'DigiLocker will ask for permission to share an issued driving licence with HireD for review. Sign in on the government website. You can cancel and upload licence photos instead.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue to DigiLocker'),
+          ),
+        ],
+      ),
+    );
     if (consent != true || !mounted) return;
     await _run(() async {
-      final uri = await widget.service.startDigiLocker(widget.session.accessToken);
-      final opened = await (widget.openBrowser?.call(uri) ?? launchUrl(uri, mode: LaunchMode.externalApplication));
-      if (!opened) throw const DriverAuthException('Could not open DigiLocker. Please try again.');
+      final uri = await widget.service.startDigiLocker(
+        widget.session.accessToken,
+      );
+      final opened =
+          await (widget.openBrowser?.call(uri) ??
+              launchUrl(uri, mode: LaunchMode.externalApplication));
+      if (!opened)
+        throw const DriverAuthException(
+          'Could not open DigiLocker. Please try again.',
+        );
       if (mounted) setState(() => _digiPending = true);
     });
   }
 
   Future<void> _date(bool birth) async {
     final now = DateUtils.dateOnly(DateTime.now());
-    final selected = await showDatePicker(context: context,
-      initialDate: birth ? (_birthDate ?? DateTime(now.year - 25, now.month, now.day)) : (_expiry ?? now.add(const Duration(days: 365))),
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: birth
+          ? (_birthDate ?? DateTime(now.year - 25, now.month, now.day))
+          : (_expiry ?? now.add(const Duration(days: 365))),
       firstDate: birth ? DateTime(1900) : now,
-      lastDate: birth ? now.subtract(const Duration(days: 1)) : DateTime(now.year + 40));
-    if (selected != null && mounted) setState(() { if (birth) { _birthDate = selected; } else { _expiry = selected; } });
+      lastDate: birth
+          ? now.subtract(const Duration(days: 1))
+          : DateTime(now.year + 40),
+    );
+    if (selected != null && mounted)
+      setState(() {
+        if (birth) {
+          _birthDate = selected;
+        } else {
+          _expiry = selected;
+        }
+      });
+  }
+
+  bool _validateLicence() {
+    if (!(_licenceForm.currentState?.validate() ?? false)) return false;
+    if (_birthDate == null || _expiry == null) {
+      setState(
+        () => _error = 'Add your date of birth and licence expiry date.',
+      );
+      return false;
+    }
+    if (_application?.hasDigiLockerDocument != true &&
+        (_application?.frontUploaded != true ||
+            _application?.backUploaded != true)) {
+      setState(
+        () => _error =
+            'Add both licence photos, or share your licence through DigiLocker.',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  bool _validateIdentity() {
+    if (!(_identityForm.currentState?.validate() ?? false)) return false;
+    if (_application?.aadhaarUploaded != true ||
+        _application?.selfieUploaded != true) {
+      setState(
+        () => _error =
+            'Add your Aadhaar card photo and take a selfie to continue.',
+      );
+      return false;
+    }
+    return true;
   }
 
   Future<void> _submit() async {
-    if (!_form.currentState!.validate()) return;
-    final application = _application;
-    if (_birthDate == null || _expiry == null) {
-      setState(() => _error = 'Add your date of birth and licence expiry date.'); return;
+    if (!_consent) {
+      setState(
+        () => _error =
+            'Please agree to the document review and profile photo use.',
+      );
+      return;
     }
-    if (application == null || !application.selfieUploaded ||
-        (!application.hasDigiLockerDocument && (!application.frontUploaded || !application.backUploaded))) {
-      setState(() => _error = 'Add your selfie and both licence photos, or share your licence through DigiLocker.'); return;
+    // Recheck required details even if the review screen is restored externally.
+    if (!validLicenceNumber(_licence.text) ||
+        _birthDate == null ||
+        _expiry == null) {
+      _go(0);
+      return;
     }
-    if (!_consent) { setState(() => _error = 'Please agree to the document review and profile photo use.'); return; }
+    if (!validAadhaarNumber(_aadhaar.text)) {
+      _go(1);
+      return;
+    }
     await _run(() async {
-      final result = await widget.service.submit(widget.session.accessToken,
-        licenceNumber: _licence.text, birthDate: _birthDate!, licenceExpiry: _expiry!, vehicleClass: _vehicleClass);
-      if (mounted) setState(() { _application = result; _selfie = null; });
+      final result = await widget.service.submit(
+        widget.session.accessToken,
+        licenceNumber: _licence.text,
+        aadhaarNumber: _aadhaar.text,
+        birthDate: _birthDate!,
+        licenceExpiry: _expiry!,
+        vehicleClass: _vehicleClass,
+      );
+      if (mounted)
+        setState(() {
+          _application = result;
+          _selfie = null;
+          _aadhaar.clear();
+          _showAadhaar = false;
+        });
     });
   }
 
-  Widget _photoTile(String title, String subtitle, bool uploaded, VoidCallback action, {Key? key}) => Card(
-    elevation: 0, margin: const EdgeInsets.only(bottom: 12),
-    child: ListTile(key: key, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      leading: Icon(uploaded ? Icons.check_circle : Icons.add_photo_alternate_outlined,
-        color: uploaded ? Colors.teal : const Color(0xFF5055F7)),
-      title: Text(title), subtitle: Text(uploaded ? 'Uploaded · tap to replace' : subtitle),
-      trailing: const Icon(Icons.chevron_right), onTap: _busy || _application == null ? null : action));
+  Widget _label(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text,
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+    ),
+  );
 
-  Widget _dateField(String title, DateTime? value, VoidCallback action) => OutlinedButton.icon(
-    onPressed: _busy ? null : action, icon: const Icon(Icons.calendar_today_outlined, size: 18),
-    label: Align(alignment: Alignment.centerLeft, child: Text(value == null ? title : '$title: ${DateFormat('dd MMM yyyy').format(value)}')),
-    style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 52)));
+  Widget _photoTile(
+    String title,
+    String subtitle,
+    bool uploaded,
+    VoidCallback action, {
+    required Key key,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: uploaded ? const Color(0xFFBCE1D2) : HireDStyle.line,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ListTile(
+        key: key,
+        minVerticalPadding: 14,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: uploaded ? const Color(0xFFEDF8F2) : HireDStyle.tint,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(
+            uploaded ? Icons.check_rounded : Icons.add_photo_alternate_outlined,
+            color: uploaded ? HireDStyle.success : HireDStyle.primary,
+            size: 22,
+          ),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            uploaded ? 'Uploaded · tap to replace' : subtitle,
+            style: const TextStyle(
+              color: HireDStyle.muted,
+              fontSize: 12,
+              height: 1.4,
+            ),
+          ),
+        ),
+        trailing: const Icon(
+          Icons.chevron_right,
+          color: HireDStyle.muted,
+          size: 20,
+        ),
+        onTap: _busy || _application == null ? null : action,
+      ),
+    ),
+  );
+
+  Widget _dateField(String title, DateTime? value, VoidCallback action) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: OutlinedButton.icon(
+          onPressed: _busy ? null : action,
+          icon: const Icon(Icons.calendar_today_outlined, size: 18),
+          label: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value == null
+                  ? title
+                  : '$title: ${DateFormat('dd MMM yyyy').format(value)}',
+              style: const TextStyle(fontSize: 13),
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(double.infinity, 54),
+            backgroundColor: Colors.white,
+          ),
+        ),
+      );
+
+  Widget _licenceStep() {
+    final app = _application;
+    final received = app?.hasDigiLockerDocument ?? false;
+    return Form(
+      key: _licenceForm,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _label('Driving licence number'),
+          TextFormField(
+            key: const Key('licence-number'),
+            controller: _licence,
+            enabled: !_busy,
+            textCapitalization: TextCapitalization.characters,
+            maxLength: 30,
+            decoration: const InputDecoration(
+              hintText: 'As shown on your licence',
+              counterText: '',
+              prefixIcon: Icon(Icons.badge_outlined, size: 20),
+            ),
+            validator: (value) => validLicenceNumber(value ?? '')
+                ? null
+                : 'Enter a valid driving licence number',
+          ),
+          const SizedBox(height: 20),
+          _dateField('Date of birth', _birthDate, () => _date(true)),
+          _dateField('Licence expiry', _expiry, () => _date(false)),
+          const SizedBox(height: 8),
+          _label('Vehicle class'),
+          DropdownButtonFormField<String>(
+            value: _vehicleClass,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.directions_car_outlined, size: 20),
+            ),
+            items: const [
+              DropdownMenuItem(
+                value: 'LMV',
+                child: Text('Light motor vehicle'),
+              ),
+              DropdownMenuItem(
+                value: 'TRANSPORT',
+                child: Text('Transport vehicle'),
+              ),
+              DropdownMenuItem(value: 'BOTH', child: Text('Both classes')),
+            ],
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _vehicleClass = value!),
+          ),
+          const SizedBox(height: 24),
+          _label('Licence photos'),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 14),
+            child: Text(
+              'Keep all four corners and the text clearly visible.',
+              style: TextStyle(
+                color: HireDStyle.muted,
+                fontSize: 12,
+                height: 1.5,
+              ),
+            ),
+          ),
+          _photoTile(
+            'Licence · front',
+            'Take a photo or choose from photos',
+            app?.frontUploaded ?? false,
+            () => _chooseDocument('licence_front'),
+            key: const Key('onboarding-licence-front'),
+          ),
+          _photoTile(
+            'Licence · back',
+            'JPG or PNG · up to 6 MB each',
+            app?.backUploaded ?? false,
+            () => _chooseDocument('licence_back'),
+            key: const Key('onboarding-licence-back'),
+          ),
+          const SizedBox(height: 4),
+          HireDCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.account_balance_outlined,
+                      color: HireDStyle.primary,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        received
+                            ? 'Licence received from DigiLocker'
+                            : 'Have your licence in DigiLocker?',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  received
+                      ? 'Issued licence received. HireD review is pending.'
+                      : 'Share an issued licence instead of uploading both licence photos.',
+                  style: const TextStyle(
+                    color: HireDStyle.muted,
+                    fontSize: 12,
+                    height: 1.6,
+                  ),
+                ),
+                if (!received)
+                  TextButton(
+                    key: const Key('connect-digilocker'),
+                    onPressed: _busy || app == null ? null : _connectDigiLocker,
+                    child: const Text('Connect DigiLocker'),
+                  ),
+                if (_digiPending || app?.digiLockerStatus == 'failed')
+                  TextButton(
+                    onPressed: _busy ? null : _refresh,
+                    child: const Text('Check DigiLocker connection'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _identityStep() => Form(
+    key: _identityForm,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _label('Aadhaar number'),
+        TextFormField(
+          key: const Key('aadhaar-number'),
+          controller: _aadhaar,
+          enabled: !_busy,
+          obscureText: !_showAadhaar,
+          enableSuggestions: false,
+          autocorrect: false,
+          keyboardType: TextInputType.number,
+          maxLength: 12,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(12),
+          ],
+          decoration: InputDecoration(
+            hintText: 'Your 12-digit Aadhaar number',
+            counterText: '',
+            prefixIcon: const Icon(Icons.credit_card_outlined, size: 20),
+            suffixIcon: IconButton(
+              tooltip: _showAadhaar
+                  ? 'Hide Aadhaar number'
+                  : 'Show Aadhaar number',
+              onPressed: _busy
+                  ? null
+                  : () => setState(() => _showAadhaar = !_showAadhaar),
+              icon: Icon(
+                _showAadhaar
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 20,
+              ),
+            ),
+          ),
+          validator: (value) => validAadhaarNumber(value ?? '')
+              ? null
+              : 'Enter a valid 12-digit Aadhaar number',
+        ),
+        const SizedBox(height: 16),
+        _photoTile(
+          'Aadhaar card photo',
+          'Front side · JPG or PNG · up to 6 MB',
+          _application?.aadhaarUploaded ?? false,
+          () => _chooseDocument('aadhaar'),
+          key: const Key('onboarding-aadhaar'),
+        ),
+        const HireDNotice(
+          'Your number is hidden on the review screen. A masked Aadhaar photo is welcome; keep your name, photo and last four digits readable.',
+        ),
+        const SizedBox(height: 28),
+        _label('Your driver photo'),
+        HireDCard(
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 42,
+                backgroundColor: HireDStyle.tint,
+                backgroundImage: _selfie == null ? null : MemoryImage(_selfie!),
+                child: _selfie == null
+                    ? Icon(
+                        _application?.selfieUploaded == true
+                            ? Icons.check_rounded
+                            : Icons.person_outline,
+                        color: HireDStyle.primary,
+                        size: 36,
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _application?.selfieUploaded == true
+                    ? 'Looking good. Photo uploaded.'
+                    : 'Put a face to your profile.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Face the camera in good light. This becomes your driver avatar.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: HireDStyle.muted,
+                  fontSize: 12,
+                  height: 1.6,
+                ),
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                key: const Key('onboarding-selfie'),
+                onPressed: _busy
+                    ? null
+                    : () => _pick('selfie', ImageSource.camera),
+                icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                label: Text(
+                  _application?.selfieUploaded == true
+                      ? 'Retake selfie'
+                      : 'Take a selfie',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _reviewRow(String label, String value, {bool checked = false}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (checked) ...[
+              const Icon(
+                Icons.check_circle_outline,
+                size: 18,
+                color: HireDStyle.success,
+              ),
+              const SizedBox(width: 9),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: HireDStyle.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _reviewStep() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      HireDCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Driver details',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _busy ? null : () => _go(0),
+                  child: const Text('Edit'),
+                ),
+              ],
+            ),
+            _reviewRow('Full name', widget.fullName),
+            _reviewRow('City', widget.city),
+            const Divider(height: 24),
+            _reviewRow('Driving licence', _licence.text.toUpperCase()),
+            _reviewRow(
+              'Licence valid until',
+              DateFormat('dd MMM yyyy').format(_expiry!),
+            ),
+            _reviewRow(
+              'Aadhaar number',
+              maskedAadhaar(normalizeAadhaarNumber(_aadhaar.text).substring(8)),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 14),
+      HireDCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Documents',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _busy ? null : () => _go(1),
+                  child: const Text('Edit'),
+                ),
+              ],
+            ),
+            _reviewRow(
+              'Driving licence',
+              _application?.hasDigiLockerDocument == true
+                  ? 'Received from DigiLocker'
+                  : 'Front and back uploaded',
+              checked: true,
+            ),
+            _reviewRow('Aadhaar card', 'Photo uploaded', checked: true),
+            _reviewRow('Driver avatar', 'Selfie uploaded', checked: true),
+          ],
+        ),
+      ),
+      const SizedBox(height: 18),
+      CheckboxListTile(
+        key: const Key('onboarding-consent'),
+        value: _consent,
+        contentPadding: EdgeInsets.zero,
+        controlAffinity: ListTileControlAffinity.leading,
+        onChanged: _busy
+            ? null
+            : (value) => setState(() => _consent = value ?? false),
+        title: const Text(
+          'I agree to HireD reviewing my licence, Aadhaar number and photo for driver onboarding, and using my selfie as my driver profile photo.',
+          style: TextStyle(fontSize: 12, height: 1.6, color: HireDStyle.muted),
+        ),
+      ),
+      const SizedBox(height: 12),
+      const HireDNotice(
+        'After you submit, HireD will review your details before activating your driver profile.',
+        icon: Icons.fact_check_outlined,
+      ),
+    ],
+  );
+
+  Widget _receipt() => Column(
+    children: [
+      const SizedBox(height: 28),
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: Color(0xFFEDF8F2),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.task_alt_rounded,
+          size: 52,
+          color: HireDStyle.success,
+        ),
+      ),
+      const SizedBox(height: 28),
+      Text(
+        widget.service.isPreview ? 'Preview complete.' : 'You’re on your way.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -.6,
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(
+        widget.service.isPreview
+            ? 'Nothing was sent to HireD. Return to sign-in to test the dashboard.'
+            : 'Application submitted. HireD will review your documents before activating your profile. Sign in with the same mobile number after approval.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          color: HireDStyle.muted,
+          fontSize: 14,
+          height: 1.7,
+        ),
+      ),
+      const SizedBox(height: 28),
+      HireDCard(
+        child: Column(
+          children: [
+            const HireDBadge('Review pending', color: HireDStyle.success),
+            const SizedBox(height: 16),
+            const Text(
+              'Application reference',
+              style: TextStyle(color: HireDStyle.muted, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              _application!.id,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            if (_application?.aadhaarLastFour != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Aadhaar ${maskedAadhaar(_application!.aadhaarLastFour!)}',
+                style: const TextStyle(color: HireDStyle.muted, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+      const SizedBox(height: 28),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton(
+          onPressed: _busy ? null : widget.onClose,
+          child: const Text('Back to sign in'),
+        ),
+      ),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
-    final app = _application;
-    final received = app?.hasDigiLockerDocument ?? false;
-    final submitted = app?.submitted ?? false;
-    return PopScope(canPop: false, child: Scaffold(
-      appBar: AppBar(automaticallyImplyLeading: false, title: const HireDLogo(width: 115),
-        actions: [TextButton(onPressed: _busy ? null : widget.onClose, child: const Text('Sign out'))]),
-      body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520),
-        child: ListView(padding: const EdgeInsets.all(24), children: [
-          if (_busy) const LinearProgressIndicator(),
-          const SizedBox(height: 16),
-          if (submitted) ...[
-            const Icon(Icons.task_alt, color: Colors.teal, size: 66), const SizedBox(height: 20),
-            Text(widget.service.isPreview ? 'Preview complete.' : 'Application submitted.', style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 12),
-            Text(widget.service.isPreview ? 'This application is only a local preview. Nothing was sent to HireD. Return to sign-in to test the dashboard.' : 'HireD will review your licence and selfie before activating your driver profile. You can sign in once your profile is approved.'),
-            const SizedBox(height: 16), SelectableText('Application reference: ${app!.id}'),
-            const SizedBox(height: 24), FilledButton(onPressed: _busy ? null : widget.onClose, child: const Text('Back to sign in')),
-          ] else Form(key: _form, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Complete your driver profile.', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 9),
-            Text('${widget.fullName} · ${widget.city}', style: const TextStyle(color: Color(0xFF687083))),
-            const SizedBox(height: 8),
-            Text(widget.service.isPreview ? 'Test code accepted. Add sample licence details and a selfie to preview registration.' : 'Your mobile is verified. Add your licence and a clear selfie for your driver avatar.'),
-            const SizedBox(height: 22),
-            Center(child: CircleAvatar(radius: 45,
-              backgroundImage: _selfie == null ? null : MemoryImage(_selfie!),
-              child: _selfie == null ? Icon(app?.selfieUploaded == true ? Icons.check : Icons.person_outline, size: 44) : null)),
-            const SizedBox(height: 12),
-            _photoTile('Selfie for your avatar', 'Take a clear photo of your face', app?.selfieUploaded ?? false,
-              () => _pick('selfie', ImageSource.camera), key: const Key('onboarding-selfie')),
-            const Text('Used for your driver profile photo and manual review.', style: TextStyle(fontSize: 12, color: Color(0xFF687083))),
-            const SizedBox(height: 22),
-            TextFormField(key: const Key('licence-number'), controller: _licence, enabled: !_busy,
-              textCapitalization: TextCapitalization.characters, maxLength: 30,
-              decoration: const InputDecoration(labelText: 'Driving licence number', hintText: 'As printed on your licence', prefixIcon: Icon(Icons.badge_outlined)),
-              validator: (v) => validLicenceNumber(v ?? '') ? null : 'Enter a valid driving licence number'),
-            const SizedBox(height: 12), _dateField('Date of birth', _birthDate, () => _date(true)),
-            const SizedBox(height: 12), _dateField('Licence expiry', _expiry, () => _date(false)),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(value: _vehicleClass, isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Vehicle class on your licence'),
-              items: const [DropdownMenuItem(value: 'LMV', child: Text('LMV — light motor vehicle')),
-                DropdownMenuItem(value: 'TRANSPORT', child: Text('Transport / commercial vehicle')),
-                DropdownMenuItem(value: 'BOTH', child: Text('LMV and transport'))],
-              onChanged: _busy ? null : (v) => setState(() => _vehicleClass = v!)),
-            const SizedBox(height: 24),
-            Card(elevation: 0, color: const Color(0xFFEEEFFF), child: Padding(padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Row(children: [Icon(Icons.account_balance_outlined), SizedBox(width: 10), Text('DigiLocker', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18))]),
-                const SizedBox(height: 10),
-                Text(received ? 'Issued licence received. HireD review is pending.' : 'Share your issued driving licence securely, or upload photos below.'),
-                if (_digiPending) const Padding(padding: EdgeInsets.only(top: 10), child: Text('Finish in your browser, return here, then check the connection.')),
-                if (app?.digiLockerStatus == 'failed') const Padding(padding: EdgeInsets.only(top: 10), child: Text('The connection did not finish. Try again or upload licence photos.')),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(key: const Key('connect-digilocker'), onPressed: _busy || app == null ? null : _connectDigiLocker,
-                  icon: Icon(received ? Icons.check_circle_outline : Icons.lock_outline),
-                  label: Text(received ? 'Reconnect DigiLocker' : 'Connect DigiLocker')),
-                if (_digiPending) TextButton(onPressed: _busy ? null : _refresh, child: const Text('Check DigiLocker connection')),
-              ]))),
-            const SizedBox(height: 14),
-            _photoTile('Licence · front', received ? 'Optional when shared through DigiLocker' : 'JPG or PNG · up to 6 MB', app?.frontUploaded ?? false,
-              () => _chooseDocument('licence_front'), key: const Key('onboarding-licence-front')),
-            _photoTile('Licence · back', received ? 'Optional when shared through DigiLocker' : 'JPG or PNG · up to 6 MB', app?.backUploaded ?? false,
-              () => _chooseDocument('licence_back'), key: const Key('onboarding-licence-back')),
-            CheckboxListTile(key: const Key('onboarding-consent'), contentPadding: EdgeInsets.zero,
-              value: _consent, controlAffinity: ListTileControlAffinity.leading,
-              onChanged: _busy ? null : (v) => setState(() => _consent = v ?? false),
-              title: const Text('I agree to HireD using these documents for driver review and my selfie as my driver profile photo.', style: TextStyle(fontSize: 13))),
-            const Text('Documents are private. Submitting an application does not activate your driver account.', style: TextStyle(fontSize: 12, color: Color(0xFF687083))),
-            const SizedBox(height: 18),
-            SizedBox(width: double.infinity, child: FilledButton(key: const Key('submit-driver-application'),
-              onPressed: _busy || app == null ? null : _submit, child: const Text('Submit driver application'))),
-          ])),
-          if (_error != null) Padding(padding: const EdgeInsets.only(top: 18), child: Semantics(liveRegion: true,
-            child: Text(_error!, key: const Key('onboarding-error'), style: const TextStyle(color: Colors.red)))),
-          if (app == null && !_busy) TextButton(onPressed: _load, child: const Text('Retry loading application')),
-          const SizedBox(height: 24),
-        ])),
+    final submitted = _application?.submitted ?? false;
+    final titles = [
+      'Your driving licence.',
+      'A little more about you.',
+      'Everything look right?',
+    ];
+    final subtitles = [
+      'Add your licence details and a clear photo of each side.',
+      'Add your Aadhaar and a selfie so HireD can review your identity.',
+      'Check your details before sending your application to HireD.',
+    ];
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_busy && !submitted && _step > 0) _go(_step - 1);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          title: const HireDLogo(width: 100),
+          actions: [
+            TextButton(
+              onPressed: _busy ? null : widget.onClose,
+              child: const Text('Exit'),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        body: SafeArea(
+          top: false,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: ListView(
+                controller: _scroll,
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                children: [
+                  if (_busy)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 20),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  if (submitted)
+                    _receipt()
+                  else if (_application == null) ...[
+                    const SizedBox(height: 48),
+                    const Text(
+                      'Preparing your application…',
+                      textAlign: TextAlign.center,
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 20),
+                      HireDNotice(_error!, error: true),
+                      TextButton(
+                        onPressed: _busy ? null : _load,
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ] else ...[
+                    const HireDBadge(
+                      'Mobile verified',
+                      color: HireDStyle.success,
+                    ),
+                    const SizedBox(height: 24),
+                    HireDSteps(
+                      labels: const ['Licence', 'Identity', 'Review'],
+                      current: _step,
+                    ),
+                    const SizedBox(height: 30),
+                    Text(
+                      titles[_step],
+                      style: const TextStyle(
+                        fontSize: 27,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -.7,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      subtitles[_step],
+                      style: const TextStyle(
+                        color: HireDStyle.muted,
+                        fontSize: 14,
+                        height: 1.6,
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    if (_step == 0) _licenceStep(),
+                    if (_step == 1) _identityStep(),
+                    if (_step == 2) _reviewStep(),
+                    if (_error != null) ...[
+                      const SizedBox(height: 18),
+                      HireDNotice(
+                        _error!,
+                        key: const Key('onboarding-error'),
+                        error: true,
+                      ),
+                    ],
+                    const SizedBox(height: 26),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        key: Key(
+                          _step == 2
+                              ? 'submit-driver-application'
+                              : 'onboarding-next',
+                        ),
+                        onPressed: _busy
+                            ? null
+                            : () {
+                                if (_step == 0 && _validateLicence())
+                                  _go(1);
+                                else if (_step == 1 && _validateIdentity())
+                                  _go(2);
+                                else if (_step == 2)
+                                  _submit();
+                              },
+                        child: Text(
+                          _busy
+                              ? 'Saving…'
+                              : _step == 2
+                              ? 'Submit application'
+                              : _step == 0
+                              ? 'Continue to identity'
+                              : 'Review application',
+                        ),
+                      ),
+                    ),
+                    if (_step > 0)
+                      Center(
+                        child: TextButton(
+                          onPressed: _busy ? null : () => _go(_step - 1),
+                          child: const Text('Go back'),
+                        ),
+                      ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Photos upload privately as you add them. Finish the details in this session before submitting.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: HireDStyle.muted,
+                        fontSize: 11,
+                        height: 1.6,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
-    ));
+    );
   }
 }

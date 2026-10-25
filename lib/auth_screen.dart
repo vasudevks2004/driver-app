@@ -9,13 +9,14 @@ import 'auth.dart';
 import 'auth_validation.dart';
 import 'identity_auth.dart';
 import 'brand.dart';
+import 'design.dart';
 import 'onboarding.dart';
 import 'onboarding_screen.dart';
 
-const _primary = Color(0xFF5055F7);
-const _ink = Color(0xFF202331);
-const _muted = Color(0xFF687083);
-const _line = Color(0xFFE6E8F0);
+const _primary = HireDStyle.primary;
+const _ink = HireDStyle.ink;
+const _muted = HireDStyle.muted;
+const _line = HireDStyle.line;
 
 enum _AuthView { login, register, otp, activation, onboarding }
 
@@ -39,7 +40,8 @@ class DriverAuthScreen extends StatefulWidget {
 
 class _DriverAuthScreenState extends State<DriverAuthScreen> {
   final _form = GlobalKey<FormState>();
-  late final _onboarding = widget.onboarding ?? DriverOnboarding(widget.auth.identity.config);
+  late final _onboarding =
+      widget.onboarding ?? DriverOnboarding(widget.auth.identity.config);
   IdentitySession? _applicantSession;
   final _phone = TextEditingController();
   final _email = TextEditingController();
@@ -65,7 +67,11 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   void dispose() {
     _timer?.cancel();
     if (_applicantSession != null) {
-      unawaited(widget.auth.identity.signOut(_applicantSession!.accessToken).catchError((_) {}));
+      unawaited(
+        widget.auth.identity
+            .signOut(_applicantSession!.accessToken)
+            .catchError((_) {}),
+      );
     }
     if (widget.onboarding == null) _onboarding.dispose();
     for (final controller in [_phone, _email, _password, _name, _city, _code]) {
@@ -160,7 +166,10 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
     if (!_form.currentState!.validate()) return;
     await _run(() async {
       if (_registering) {
-        final identity = await widget.auth.verifyRegistrationOtp(_sentTo, _code.text.trim());
+        final identity = await widget.auth.verifyRegistrationOtp(
+          _sentTo,
+          _code.text.trim(),
+        );
         if (!mounted) {
           await widget.auth.identity.signOut(identity.accessToken);
           return;
@@ -173,7 +182,10 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         });
         return;
       }
-      final session = await widget.auth.verifyPhoneOtp(_sentTo, _code.text.trim());
+      final session = await widget.auth.verifyPhoneOtp(
+        _sentTo,
+        _code.text.trim(),
+      );
       _code.clear();
       if (!mounted) return;
       await widget.onAuthenticated(session);
@@ -217,8 +229,8 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
       Text(
         title,
         style: const TextStyle(
-          fontSize: 29,
-          fontWeight: FontWeight.w800,
+          fontSize: 32,
+          fontWeight: FontWeight.w700,
           letterSpacing: -.8,
           color: _ink,
         ),
@@ -236,7 +248,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
     hintText: hint,
     prefixIcon: icon == null ? null : Icon(icon, size: 20, color: _muted),
     filled: true,
-    fillColor: const Color(0xFFFAFAFD),
+    fillColor: Colors.white,
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 17),
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
     enabledBorder: OutlineInputBorder(
@@ -438,32 +450,47 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         'Welcome back.',
         'Sign in to see your duties, availability and earnings.',
       ),
-      _googleButton(),
-      _divider(),
-      SegmentedButton<bool>(
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment(
-            value: false,
-            icon: Icon(Icons.phone_outlined, size: 17),
-            label: Text('Phone'),
+      SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<bool>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(
+              value: false,
+              icon: Icon(Icons.phone_outlined, size: 17),
+              label: Text('Phone'),
+            ),
+            ButtonSegment(
+              value: true,
+              icon: Icon(Icons.mail_outline, size: 17),
+              label: Text('Email'),
+            ),
+          ],
+          selected: {_emailMode},
+          onSelectionChanged: _busy
+              ? null
+              : (value) => setState(() {
+                  _emailMode = value.first;
+                  _error = null;
+                  _password.clear();
+                  _form.currentState?.reset();
+                }),
+          style: ButtonStyle(
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(vertical: 14),
+            ),
+            side: const WidgetStatePropertyAll(BorderSide(color: _line)),
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? HireDStyle.tint
+                  : Colors.white,
+            ),
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (states) =>
+                  states.contains(WidgetState.selected) ? _primary : _muted,
+            ),
           ),
-          ButtonSegment(
-            value: true,
-            icon: Icon(Icons.mail_outline, size: 17),
-            label: Text('Email'),
-          ),
-        ],
-        selected: {_emailMode},
-        onSelectionChanged: _busy
-            ? null
-            : (value) => setState(() {
-                _emailMode = value.first;
-                _error = null;
-                _password.clear();
-                _form.currentState?.reset();
-              }),
-        style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        ),
       ),
       const SizedBox(height: 23),
       if (_emailMode) _emailFields() else _phoneField(),
@@ -479,6 +506,8 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         _emailMode ? 'Sign in' : 'Send OTP',
         _emailMode ? _loginWithEmail : _sendOtp,
       ),
+      _divider(),
+      _googleButton(),
       const SizedBox(height: 21),
       Center(
         child: Wrap(
@@ -511,7 +540,14 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
     children: [
       _title(
         'Drive with HireD.',
-        'Register as a new driver. Verify your mobile, then add your licence and selfie.',
+        'Register as a new driver. Start with your details, then verify your mobile.',
+      ),
+      const Padding(
+        padding: EdgeInsets.only(bottom: 24),
+        child: HireDSteps(
+          labels: ['Details', 'Mobile', 'Documents'],
+          current: 0,
+        ),
       ),
       _label('Full name'),
       TextFormField(
@@ -545,10 +581,14 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
           'Your city',
           Icons.location_on_outlined,
         ).copyWith(counterText: ''),
-        validator: (value) => (value?.trim().length ?? 0) < 2 ? 'Enter your city' : null,
+        validator: (value) =>
+            (value?.trim().length ?? 0) < 2 ? 'Enter your city' : null,
       ),
       const SizedBox(height: 18),
-      const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.badge_outlined, color: _primary), title: Text('Next: licence & driver avatar'), subtitle: Text('Add licence details, front/back photos and a selfie. You can also share your licence through DigiLocker.')),
+      const HireDNotice(
+        'Have these ready: driving licence, Aadhaar number and card photo, and a selfie.',
+        icon: Icons.fact_check_outlined,
+      ),
       const SizedBox(height: 14),
       CheckboxListTile(
         key: const Key('registration-acknowledgement'),
@@ -589,7 +629,12 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         ),
         child: const Icon(Icons.sms_outlined, color: _primary, size: 31),
       ),
-      _title('Verify your number.', widget.onboarding?.isPreview == true ? 'Enter the local test code 123456. No SMS was sent.' : 'Enter the 6-digit code sent to $_sentTo.'),
+      _title(
+        'Verify your number.',
+        widget.onboarding?.isPreview == true
+            ? 'Enter the local test code 123456. No SMS was sent.'
+            : 'Enter the 6-digit code sent to $_sentTo.',
+      ),
       _label('Verification code'),
       TextFormField(
         key: const Key('phone-otp'),
@@ -606,9 +651,10 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         style: const TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.w700,
-          letterSpacing: 10,
+          letterSpacing: 8,
         ),
-        decoration: _decoration('000000', Icons.lock_outline),
+        textAlign: TextAlign.center,
+        decoration: _decoration('000000', null),
         validator: (value) =>
             isValidOtp(value ?? '') ? null : 'Enter the 6-digit code',
         onFieldSubmitted: (_) => _verifyOtp(),
@@ -689,104 +735,104 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
 
   @override
   Widget build(BuildContext context) => _view == _AuthView.onboarding
-    ? DriverOnboardingScreen(service: _onboarding, session: _applicantSession!,
-        fullName: _registrationName!, city: _registrationCity!, onClose: () async {
-          final session = _applicantSession;
-          _applicantSession = null;
-          if (session != null) {
-            try { await widget.auth.identity.signOut(session.accessToken); } catch (_) {}
-          }
-          if (mounted) _navigate(_AuthView.login);
-        })
-    : PopScope(
-    canPop: _view == _AuthView.login && !_busy,
-    onPopInvokedWithResult: (didPop, _) {
-      if (!didPop && !_busy)
-        _navigate(
-          _view == _AuthView.otp && _registering
-              ? _AuthView.register
-              : _AuthView.login,
-        );
-    },
-    child: Scaffold(
-      backgroundColor: const Color(0xFFF7F8FC),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-              children: [
-                Row(
-                  children: [
-                    if (_view != _AuthView.login)
-                      IconButton(
-                        tooltip: 'Back to sign in',
-                        onPressed: _busy
-                            ? null
-                            : () => _navigate(
-                                _view == _AuthView.otp && _registering
-                                    ? _AuthView.register
-                                    : _AuthView.login,
-                              ),
-                        icon: const Icon(Icons.arrow_back, color: _ink),
+      ? DriverOnboardingScreen(
+          service: _onboarding,
+          session: _applicantSession!,
+          fullName: _registrationName!,
+          city: _registrationCity!,
+          onClose: () async {
+            final session = _applicantSession;
+            _applicantSession = null;
+            if (session != null) {
+              try {
+                await widget.auth.identity.signOut(session.accessToken);
+              } catch (_) {}
+            }
+            if (mounted) _navigate(_AuthView.login);
+          },
+        )
+      : PopScope(
+          canPop: _view == _AuthView.login && !_busy,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop && !_busy)
+              _navigate(
+                _view == _AuthView.otp && _registering
+                    ? _AuthView.register
+                    : _AuthView.login,
+              );
+          },
+          child: Scaffold(
+            backgroundColor: Colors.white,
+            body: SafeArea(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 460),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    children: [
+                      Row(
+                        children: [
+                          if (_view != _AuthView.login)
+                            IconButton(
+                              tooltip: 'Back to sign in',
+                              onPressed: _busy
+                                  ? null
+                                  : () => _navigate(
+                                      _view == _AuthView.otp && _registering
+                                          ? _AuthView.register
+                                          : _AuthView.login,
+                                    ),
+                              icon: const Icon(Icons.arrow_back, color: _ink),
+                            ),
+                          const HireDLogo(width: 112),
+                          const Spacer(),
+                          const HireDBadge('DRIVER'),
+                        ],
                       ),
-                    const HireDLogo(width: 128),
-                    const Spacer(),
-                    const Text(
-                      'DRIVER',
-                      style: TextStyle(
-                        color: _primary,
-                        letterSpacing: 2,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
+                      const SizedBox(height: 52),
+                      Container(
+                        padding: EdgeInsets.zero,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        child: AutofillGroup(
+                          child: Form(
+                            key: _form,
+                            child: KeyedSubtree(
+                              key: ValueKey('auth-${_view.name}-$_emailMode'),
+                              child: switch (_view) {
+                                _AuthView.login => _login(),
+                                _AuthView.register => _register(),
+                                _AuthView.otp => _otpPage(),
+                                _AuthView.activation => _activationPage(),
+                                _AuthView.onboarding => const SizedBox.shrink(),
+                              },
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 35),
-                Container(
-                  padding: const EdgeInsets.all(22),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: _line),
+                      const SizedBox(height: 25),
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.shield_outlined, color: _muted, size: 15),
+                          SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              'Duties, availability and earnings. In one place.',
+                              style: TextStyle(color: _muted, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  child: AutofillGroup(
-                    child: Form(
-                      key: _form,
-                      child: KeyedSubtree(
-                        key: ValueKey('auth-${_view.name}-$_emailMode'),
-                        child: switch (_view) {
-                          _AuthView.login => _login(),
-                          _AuthView.register => _register(),
-                          _AuthView.otp => _otpPage(),
-                          _AuthView.activation => _activationPage(),
-                          _AuthView.onboarding => const SizedBox.shrink(),
-                        },
-                      ),
-                    ),
-                  ),
                 ),
-                const SizedBox(height: 25),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.shield_outlined, color: _muted, size: 15),
-                    SizedBox(width: 7),
-                    Flexible(
-                      child: Text(
-                        'Verified drivers. Trusted journeys.',
-                        style: TextStyle(color: _muted, fontSize: 11),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
-    ),
-  );
+        );
 }

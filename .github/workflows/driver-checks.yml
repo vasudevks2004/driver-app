@@ -27,7 +27,19 @@ jobs:
       - name: Check Dart syntax
         run: dart format --output=none lib test
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - run: flutter test
+      - name: Test driver flows and render UI previews
+        run: flutter test
+        env:
+          HIRED_UI_PREVIEWS: '1'
+          HIRED_FLUTTER_ROOT: ${{ runner.temp }}/hired-flutter
+      - name: Save rendered app screens
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: driver-ui-previews
+          path: build/ui-previews/*.png
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Check onboarding service types
         run: npx --yes deno@2.9.6 check supabase/functions/driver-onboarding/index.ts supabase/functions/send-sms-msg91/index.ts
       - name: Test onboarding service over HTTP stand-ins

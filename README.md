@@ -6,7 +6,7 @@ Flutter driver app for Android and iOS. HireD supplies drivers; the business or 
 
 - **Google:** native Google account chooser, Supabase token exchange, then HireD driver-profile verification.
 - **Mobile number:** SMS OTP, code verification, resend countdown and change-number controls. Login does not create an account.
-- **Register as a new driver:** full name, mobile number and city; verify the number, then add licence number, date of birth, expiry, vehicle class, front/back photos and a camera selfie for the driver avatar. Submit the application for HireD review. No password is required for phone accounts.
+- **Register as a new driver:** full name, mobile number and city; verify the number, then add licence number, date of birth, expiry, vehicle class, front/back photos, Aadhaar number and card photo, and a camera selfie for the driver avatar. Submit the application for HireD review. No password is required for phone accounts.
 - **Email:** existing administrator-issued email/password login remains available.
 - **DigiLocker:** consent-based, server-side OAuth with PKCE and a single-use callback. An issued licence can replace manual licence photos. Live use requires approved requester credentials; missing configuration keeps photo upload available.
 - Sessions are stored securely only after the backend confirms a driver profile. New or unlinked identities see activation instructions before dashboard access.
@@ -69,3 +69,9 @@ flutter build ipa --release --dart-define-from-file=config/auth.json
 Tests cover phone/Google HTTP exchanges against local stand-ins, driver access verification, failed/expired codes, disabled providers, rate limits, cancellation, registration and narrow-screen layouts. Passing these checks does not prove live OAuth, real SMS delivery or device integration.
 
 This is a standalone driver repository. The existing admin/B2B portal source remains separate.
+
+## Driver interface refresh
+
+The driver workspace uses four tabs: Home, Duties, Earnings and Profile. Home prioritizes availability and the next assignment; Duties separates active and completed work. Registration uses Licence, Identity and Review steps, including an Aadhaar number and card photo, masked review details and explicit consent. Shared visual tokens and reusable cards live in `lib/design.dart`; duty presentation lives in `lib/driver_widgets.dart`.
+
+For a free local test, switch to `feature/driver-onboarding`, run `flutter pub get`, then `flutter run -t lib/main_dev.dart`. Use **+91 9876543210** and **123456**. This debug entry point shows a permanent local-test banner and never sends SMS, saves credentials or submits real documents. Real driver access uses `lib/main.dart` and the configured backend.

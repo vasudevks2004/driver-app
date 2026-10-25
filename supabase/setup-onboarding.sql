@@ -13,6 +13,8 @@ create table if not exists public.driver_applications (
   selfie_path text,
   licence_front_path text,
   licence_back_path text,
+  aadhaar_number text check (aadhaar_number ~ '^[2-9][0-9]{11}$'),
+  aadhaar_path text,
   digilocker_document_path text,
   digilocker_document_uri text,
   digilocker_status text not null default 'not_connected'
@@ -22,6 +24,10 @@ create table if not exists public.driver_applications (
   submitted_at timestamptz,
   created_at timestamptz not null default now()
 );
+-- Safe to run against an existing v1 onboarding installation as well.
+alter table public.driver_applications
+  add column if not exists aadhaar_number text check (aadhaar_number ~ '^[2-9][0-9]{11}$'),
+  add column if not exists aadhaar_path text;
 alter table public.driver_applications enable row level security;
 -- Access is exclusively through the authenticated function. Deny direct writes,
 -- including attempts to self-approve or set DigiLocker verification flags.

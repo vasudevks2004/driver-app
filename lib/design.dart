@@ -57,7 +57,10 @@ abstract final class HireDStyle {
           minimumSize: const Size(0, 52),
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+          textStyle: base.textTheme.labelLarge?.copyWith(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+          ),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
@@ -76,7 +79,9 @@ abstract final class HireDStyle {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           minimumSize: const Size(48, 48),
-          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+          textStyle: base.textTheme.labelLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
@@ -253,17 +258,42 @@ class HireDSteps extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 9),
-                  Text(
-                    '${index < current ? '✓' : index + 1}  ${labels[index]}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: index <= current
-                          ? HireDStyle.primary
-                          : HireDStyle.muted,
-                      fontWeight: index == current
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (index < current) ...[
+                        const Icon(
+                          Icons.check_rounded,
+                          size: 15,
+                          color: HireDStyle.primary,
+                        ),
+                        const SizedBox(width: 5),
+                      ] else
+                        Text(
+                          '${index + 1}  ',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: index <= current
+                                ? HireDStyle.primary
+                                : HireDStyle.muted,
+                          ),
+                        ),
+                      Expanded(
+                        child: Text(
+                          labels[index],
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: index <= current
+                                ? HireDStyle.primary
+                                : HireDStyle.muted,
+                            fontWeight: index == current
+                                ? FontWeight.w700
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

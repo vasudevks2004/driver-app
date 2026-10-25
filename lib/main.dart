@@ -855,9 +855,18 @@ class _DriverHomeState extends State<DriverHome> {
         ],
         if (status == 'closed' || status == 'completed')
           panel(
-            const Text(
-              '✓ Duty completed. Earnings are shown in your wallet.',
-              style: TextStyle(color: green, fontWeight: FontWeight.w700),
+            const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.check_circle_outline, color: green, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Duty completed. Earnings are shown in your wallet.',
+                    style: TextStyle(color: green, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
             ),
           ),
         button('Back to duties', () => setState(() => page = 1), light: true),
@@ -881,9 +890,11 @@ class _DriverHomeState extends State<DriverHome> {
                   size: 21,
                 ),
                 SizedBox(width: 10),
-                Text(
-                  'Wallet balance',
-                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                Expanded(
+                  child: Text(
+                    'Wallet balance',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                  ),
                 ),
               ],
             ),

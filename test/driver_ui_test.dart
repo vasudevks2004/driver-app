@@ -145,6 +145,12 @@ void main() {
         final loader = FontLoader('Roboto')
           ..addFont(Future.value(ByteData.sublistView(bytes)));
         await loader.load();
+        final icons = await File(
+          '$flutterRoot/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+        ).readAsBytes();
+        final iconLoader = FontLoader('MaterialIcons')
+          ..addFont(Future.value(ByteData.sublistView(icons)));
+        await iconLoader.load();
       });
     }
     final boundary = GlobalKey();

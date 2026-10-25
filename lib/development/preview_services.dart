@@ -41,6 +41,10 @@ class PreviewIdentityAuth extends SupabaseIdentityAuth {
   bool _issued = false;
 
   @override
+  Future<DriverAuthMethods> methods() async =>
+      const DriverAuthMethods(phone: true, google: false, email: false);
+
+  @override
   Future<void> sendPhoneOtp(
     String phone, {
     bool register = false,
@@ -121,6 +125,8 @@ class PreviewOnboarding extends DriverOnboarding {
         _data['licence_front_uploaded'] == true &&
         _data['licence_back_uploaded'] == true,
     'aadhaar': _data['aadhaar_uploaded'] == true,
+    'pan': _data['pan_uploaded'] == true,
+    'pcc': _data['pcc_uploaded'] == true,
   };
 
   void _owner(String token) {
@@ -149,6 +155,24 @@ class PreviewOnboarding extends DriverOnboarding {
   }
 
   @override
+  Future<DriverApplication> saveDraft(
+    String token,
+    Map<String, dynamic> details,
+  ) async {
+    _owner(token);
+    _data.addAll(details);
+    return _snapshot;
+  }
+
+  @override
+  Future<void> deleteApplication(String token) async {
+    _owner(token);
+    _data.clear();
+    _data.addAll({'id': 'LOCAL-PREVIEW-001', 'status': 'draft'});
+    _selfie = null;
+  }
+
+  @override
   Future<DriverApplication> upload(
     String token,
     String kind,
@@ -164,11 +188,13 @@ class PreviewOnboarding extends DriverOnboarding {
           'licence_front',
           'licence_back',
           'aadhaar',
+          'pan',
+          'pcc',
         ].contains(kind) ||
         driverImageMime(bytes) == null ||
         bytes.length > maxDriverImageBytes) {
       throw const DriverAuthException(
-        'Choose a JPG or PNG image smaller than 6 MB.',
+        'Choose a JPG or PNG image smaller than 5 MB.',
       );
     }
     _data['${kind}_uploaded'] = true;
@@ -301,11 +327,13 @@ class PreviewDriverAuth extends DriverAuth {
     Map<String, dynamic>? body,
   }) async {
     await ensureFresh();
-    if (path == '/drivers/me') return _profile;
-    if (path == '/drivers/me/trips') return <Map<String, dynamic>>[];
-    if (path == '/drivers/me/wallet')
+    final uri = Uri.parse(path);
+    final route = uri.path;
+    if (route == '/drivers/me') return _profile;
+    if (route == '/drivers/me/trips') return <Map<String, dynamic>>[];
+    if (route == '/drivers/me/wallet')
       return {'balance': 0, 'transactions': <Map<String, dynamic>>[]};
-    if (path == '/drivers/me/availability' && method == 'PATCH') {
+    if (route == '/drivers/me/availability' && method == 'PATCH') {
       _online = body?['online'] == true;
       _unavailableDates
         ..clear()
@@ -318,7 +346,7 @@ class PreviewDriverAuth extends DriverAuth {
   }
 
   @override
-  Future<void> upload(String path, String filePath) async {
+  Future<void> upload(String path, String filePath, {String? expiresOn}) async {
     await ensureFresh();
   }
 

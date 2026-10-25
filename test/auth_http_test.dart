@@ -264,13 +264,24 @@ void main() {
     },
   );
 
-  test('otp_disabled produces setup guidance and never activates a driver', () async {
-    identityStatus = 422;
-    identityError = {'error_code': 'otp_disabled'};
-    await expectLater(auth.sendPhoneOtp('+919876543210'), throwsA(isA<DriverAuthException>().having(
-      (error) => error.message, 'message', contains('SMS sign-in is not configured'))));
-    expect(auth.current, isNull);
-  });
+  test(
+    'otp_disabled produces setup guidance and never activates a driver',
+    () async {
+      identityStatus = 422;
+      identityError = {'error_code': 'otp_disabled'};
+      await expectLater(
+        auth.sendPhoneOtp('+919876543210'),
+        throwsA(
+          isA<DriverAuthException>().having(
+            (error) => error.message,
+            'message',
+            contains('SMS sign-in is not configured'),
+          ),
+        ),
+      );
+      expect(auth.current, isNull);
+    },
+  );
 
   test(
     'HTML server failures are handled without exposing response content',

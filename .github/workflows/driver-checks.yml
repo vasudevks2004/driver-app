@@ -40,6 +40,18 @@ jobs:
           path: build/ui-previews/*.png
           if-no-files-found: ignore
           retention-days: 7
+      - name: Generate native shells without replacing app source
+        run: |
+          flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$RUNNER_TEMP/hired-native"
+          python3 scripts/prepare-native.py "$RUNNER_TEMP/hired-native"
+      - name: Build Android debug app
+        run: flutter build apk --debug --dart-define-from-file=config/auth.json
+      - name: Save Android debug app
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hired-driver-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
       - name: Check onboarding service types
         run: npx --yes deno@2.9.6 check supabase/functions/driver-onboarding/index.ts supabase/functions/send-sms-msg91/index.ts
       - name: Test onboarding service over HTTP stand-ins

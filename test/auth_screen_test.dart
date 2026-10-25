@@ -14,6 +14,10 @@ class _ScreenAuth extends DriverAuth {
   String? name;
 
   @override
+  Future<DriverAuthMethods> methods() async =>
+      const DriverAuthMethods(phone: true, google: true, email: true);
+
+  @override
   Future<void> sendPhoneOtp(
     String value, {
     bool register = false,

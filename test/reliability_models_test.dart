@@ -1,0 +1,141 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hired_driver/features/duties/duty.dart';
+import 'package:hired_driver/features/earnings/earnings.dart';
+import 'package:hired_driver/core/pending_operations.dart';
+import 'package:hired_driver/features/workspace/controller.dart';
+import 'package:hired_driver/development/preview_services.dart';
+import 'package:hired_driver/auth.dart';
+
+class _FailingAuth extends PreviewDriverAuth {
+  _FailingAuth(super.application);
+  @override
+  Future<dynamic> request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? body,
+  }) async => throw StateError('Offline test');
+}
+
+void main() {
+  test(
+    'wallet signed effects come from the ledger, including either reversal direction',
+    () {
+      for (final input in [
+        {'kind': 'trip_credit', 'amount': 100, 'signedAmount': 100},
+        {'kind': 'offline_settlement', 'amount': 60, 'signedAmount': -60},
+        {'kind': 'reversal', 'amount': 60, 'signedAmount': 60},
+        {'kind': 'reversal', 'amount': 100, 'signedAmount': -100},
+      ]) {
+        expect(
+          WalletTransaction.fromJson(input).signedAmount,
+          input['signedAmount'],
+        );
+      }
+      expect(
+        WalletTransaction.fromJson({
+          'kind': 'reversal',
+          'amount': 100,
+        }).signedAmount,
+        isNull,
+      );
+    },
+  );
+  test(
+    'no-expenses survives deserialization and unknown duty states stay unavailable',
+    () {
+      final duty = DriverDuty.fromJson({
+        'id': 'trip-test',
+        'status': 'Ongoing',
+        'selfie': true,
+        'expenses': [],
+        'expensesSubmitted': true,
+        'noExpenses': true,
+      });
+      expect(duty.expensesSubmitted, isTrue);
+      expect(duty.noExpenses, isTrue);
+      expect(duty.expenses, isEmpty);
+      expect(
+        DriverDuty.fromJson({'id': 'unknown', 'status': 'reassigned'}).status,
+        DutyStatus.unavailable,
+      );
+      expect(
+        DriverDuty.fromJson({
+          'id': 'closed',
+          'status': 'Closed',
+          'contactPhone': '9876543210',
+        }).contactPhone,
+        isNull,
+      );
+    },
+  );
+  test(
+    'pending operation keys survive recreation, bind account and payload, and store no request bodies',
+    () async {
+      final storage = MemoryOperationStorage(),
+          first = PendingOperations(storage: MemoryOperationStorage());
+      final operations = PendingOperations(storage: storage),
+          hash = operationFingerprint('POST', '/trips/a/close', {
+            'otp': '654321',
+          });
+      final key = await operations.begin('https://api.test', 'driver-a', hash);
+      expect(
+        await PendingOperations(
+          storage: storage,
+        ).begin('https://api.test', 'driver-a', hash),
+        key,
+      );
+      expect(
+        await operations.begin('https://api.test', 'driver-b', hash),
+        isNot(key),
+      );
+      expect(
+        await operations.begin(
+          'https://api.test',
+          'driver-a',
+          operationFingerprint('POST', '/trips/a/close', {'otp': '000000'}),
+        ),
+        isNot(key),
+      );
+      await operations.acknowledge('https://api.test', 'driver-a', hash);
+      expect(
+        await operations.begin('https://api.test', 'driver-a', hash),
+        isNot(key),
+      );
+      expect(await first.begin('server', 'actor', hash), isNotEmpty);
+    },
+  );
+  test('concurrent matching actions share one pending key', () async {
+    final pending = PendingOperations(storage: MemoryOperationStorage());
+    final keys = await Future.wait(
+      List.generate(
+        10,
+        (_) => pending.begin('server', 'driver', 'fingerprint'),
+      ),
+    );
+    expect(keys.toSet().length, 1);
+  });
+  test(
+    'failed initial loads remain unavailable rather than becoming confirmed zero balances or empty duties',
+    () async {
+      final application = PreviewOnboarding(),
+          auth = _FailingAuth(PreviewOnboarding());
+      final state = DriverWorkspace(auth);
+      auth.current = DriverSession(
+        token: 'development-only-driver',
+        refreshToken: 'preview',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+        profile: {'id': 'driver-a', 'role': 'driver', 'name': 'Test'},
+      );
+      state.activate(auth.current!);
+      await state.refresh();
+      expect(state.active.value, isNull);
+      expect(state.active.error, isNotNull);
+      expect(state.earnings.value, isNull);
+      expect(state.earnings.error, isNotNull);
+      state.dispose();
+      auth.dispose();
+      application.dispose();
+      auth.application.dispose();
+    },
+  );
+}

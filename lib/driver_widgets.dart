@@ -9,7 +9,9 @@ String dutyStatus(Map<String, dynamic> duty) => dutyIsComplete(duty)
     ? 'Completed'
     : duty['status']?.toString().toLowerCase() == 'ongoing'
     ? 'In progress'
-    : 'Assigned';
+    : duty['status']?.toString().toLowerCase() == 'assigned'
+    ? 'Assigned'
+    : 'Unavailable';
 String dutyReference(dynamic value) {
   final text = value?.toString() ?? '—';
   return text.length > 16

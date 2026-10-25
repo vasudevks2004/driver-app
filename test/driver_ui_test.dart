@@ -56,19 +56,42 @@ class _WorkspaceAuth extends PreviewDriverAuth {
     String method = 'GET',
     Map<String, dynamic>? body,
   }) async {
-    if (path == '/drivers/me') return {'name': 'Vasudev', 'online': true};
-    if (path == '/drivers/me/trips')
-      return _trips.map((trip) => {...trip}).toList();
-    if (path == '/drivers/me/wallet')
+    final uri = Uri.parse(path);
+    final route = uri.path;
+    if (route == '/drivers/me') return {'name': 'Vasudev', 'online': true};
+    if (route == '/drivers/me/trips')
+      return {
+        'trips': _trips
+            .where(
+              (t) => uri.queryParameters['status'] == 'completed'
+                  ? t['status'] == 'Closed'
+                  : t['status'] != 'Closed',
+            )
+            .map((t) => {...t})
+            .toList(),
+        'activeCount': 1,
+        'completedCount': 1,
+      };
+    if (route.startsWith('/drivers/me/trips/'))
+      return {..._trips.firstWhere((t) => t['id'] == route.split('/').last)};
+    if (route == '/drivers/me/wallet')
       return {
         'balance': 2400,
         'transactions': [
           {
             'trip': _trips.last['id'],
             'amount': 900,
+            'kind': 'trip_credit',
+            'signedAmount': 900,
             'date': '24 Oct · 4:10 PM',
           },
-          {'trip': 'TRP-1024', 'amount': 1500, 'date': '23 Oct · 5:30 PM'},
+          {
+            'trip': 'TRP-1024',
+            'amount': 1500,
+            'kind': 'trip_credit',
+            'signedAmount': 1500,
+            'date': '23 Oct · 5:30 PM',
+          },
         ],
       };
     return super.request(path, method: method, body: body);

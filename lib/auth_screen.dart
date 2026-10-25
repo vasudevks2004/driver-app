@@ -63,6 +63,37 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   int _resendSeconds = 0;
   Timer? _timer;
 
+  DriverAuthMethods _methods = const DriverAuthMethods(
+    phone: false,
+    google: false,
+    email: true,
+    known: false,
+  );
+  String? _methodsError;
+  @override
+  void initState() {
+    super.initState();
+    _checkMethods();
+  }
+
+  Future<void> _checkMethods() async {
+    try {
+      final methods = await widget.auth.methods();
+      if (mounted)
+        setState(() {
+          _methods = methods;
+          _methodsError = null;
+          if (!methods.phone && methods.email) _emailMode = true;
+        });
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => _methodsError =
+              'Could not check sign-in availability. Check your connection and retry.',
+        );
+    }
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
@@ -276,7 +307,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   Widget _primaryButton(String title, VoidCallback action) => SizedBox(
     width: double.infinity,
     child: FilledButton(
-      onPressed: _busy ? null : action,
+      onPressed: _busy || !_methods.known ? null : action,
       style: FilledButton.styleFrom(
         backgroundColor: _primary,
         foregroundColor: Colors.white,
@@ -446,6 +477,13 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   Widget _login() => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      if (_methodsError != null) ...[
+        HireDNotice(_methodsError!, error: true),
+        TextButton(
+          onPressed: _checkMethods,
+          child: const Text('Retry sign-in methods'),
+        ),
+      ],
       _title(
         'Welcome back.',
         'Sign in to see your duties, availability and earnings.',
@@ -454,7 +492,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         width: double.infinity,
         child: SegmentedButton<bool>(
           showSelectedIcon: false,
-          segments: const [
+          segments: [
             ButtonSegment(
               value: false,
               icon: Icon(Icons.phone_outlined, size: 17),
@@ -506,8 +544,15 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         _emailMode ? 'Sign in' : 'Send OTP',
         _emailMode ? _loginWithEmail : _sendOtp,
       ),
-      _divider(),
-      _googleButton(),
+      if (_methods.google) ...[_divider(), _googleButton()],
+      if (_methods.known && !_methods.phone)
+        const Padding(
+          padding: EdgeInsets.only(top: 16),
+          child: Text(
+            'Phone sign-in and new driver registration are being set up. Use your HireD email account for now.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.6),
+          ),
+        ),
       const SizedBox(height: 21),
       Center(
         child: Wrap(
@@ -519,7 +564,9 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
             ),
             TextButton(
               key: const Key('open-register'),
-              onPressed: _busy ? null : () => _navigate(_AuthView.register),
+              onPressed: _busy || !_methods.phone
+                  ? null
+                  : () => _navigate(_AuthView.register),
               child: const Text('Register as a new driver'),
             ),
           ],

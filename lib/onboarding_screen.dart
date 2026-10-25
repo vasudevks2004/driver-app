@@ -36,6 +36,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
   final _licenceForm = GlobalKey<FormState>();
   final _identityForm = GlobalKey<FormState>();
   final _licence = TextEditingController();
+  final _name = TextEditingController(), _city = TextEditingController();
   final _aadhaar = TextEditingController();
   final _scroll = ScrollController();
   DriverApplication? _application;
@@ -53,6 +54,8 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _name.text = widget.fullName;
+    _city.text = widget.city;
     _load();
   }
 
@@ -60,6 +63,8 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _licence.dispose();
+    _name.dispose();
+    _city.dispose();
     _aadhaar.dispose();
     _scroll.dispose();
     super.dispose();
@@ -100,7 +105,18 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       name: widget.fullName,
       city: widget.city,
     );
-    if (mounted) setState(() => _application = application);
+    if (mounted)
+      setState(() {
+        _application = application;
+        _licence.text = application.data['licence_number']?.toString() ?? '';
+        _birthDate = DateTime.tryParse(
+          application.data['birth_date']?.toString() ?? '',
+        );
+        _expiry = DateTime.tryParse(
+          application.data['licence_expiry']?.toString() ?? '',
+        );
+        _vehicleClass = application.data['vehicle_class']?.toString() ?? 'LMV';
+      });
   });
 
   Future<void> _refresh() => _run(() async {
@@ -111,6 +127,50 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
         _digiPending = application.digiLockerStatus == 'pending';
       });
   });
+
+  Future<void> _saveAndContinue(int step) => _run(() async {
+    final saved = await widget.service.saveDraft(widget.session.accessToken, {
+      'full_name': _name.text.trim(),
+      'city': _city.text.trim(),
+      'licence_number': _licence.text.trim().toUpperCase(),
+      if (_birthDate != null)
+        'birth_date': _birthDate!.toIso8601String().split('T').first,
+      if (_expiry != null)
+        'licence_expiry': _expiry!.toIso8601String().split('T').first,
+      'vehicle_class': _vehicleClass,
+    });
+    if (mounted) {
+      setState(() => _application = saved);
+      _go(step);
+    }
+  });
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your application?'),
+        content: const Text(
+          'Your application details will be removed and private uploads queued for deletion. You can register again later.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep application'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete application'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _run(() async {
+      await widget.service.deleteApplication(widget.session.accessToken);
+      await widget.onClose();
+    });
+  }
 
   void _go(int step) {
     FocusScope.of(context).unfocus();
@@ -141,7 +201,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
         if (image != null) {
           if (await image.length() > maxDriverImageBytes)
             throw const DriverAuthException(
-              'Choose an image smaller than 6 MB.',
+              'Choose an image smaller than 5 MB.',
             );
           bytes = await image.readAsBytes();
         }
@@ -276,6 +336,14 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       setState(
         () => _error =
             'Add your Aadhaar card photo and take a selfie to continue.',
+      );
+      return false;
+    }
+    if (_application?.panUploaded != true ||
+        _application?.pccUploaded != true) {
+      setState(
+        () =>
+            _error = 'Add your PAN and police clearance documents to continue.',
       );
       return false;
     }
@@ -416,6 +484,26 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _label('Full name'),
+          TextFormField(
+            controller: _name,
+            enabled: !_busy,
+            maxLength: 100,
+            decoration: const InputDecoration(counterText: ''),
+            validator: (v) =>
+                (v?.trim().length ?? 0) >= 2 ? null : 'Enter your full name',
+          ),
+          const SizedBox(height: 16),
+          _label('City'),
+          TextFormField(
+            controller: _city,
+            enabled: !_busy,
+            maxLength: 80,
+            decoration: const InputDecoration(counterText: ''),
+            validator: (v) =>
+                (v?.trim().length ?? 0) >= 2 ? null : 'Enter your city',
+          ),
+          const SizedBox(height: 16),
           _label('Driving licence number'),
           TextFormField(
             key: const Key('licence-number'),
@@ -480,7 +568,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
           ),
           _photoTile(
             'Licence · back',
-            'JPG or PNG · up to 6 MB each',
+            'JPG or PNG · up to 5 MB each',
             app?.backUploaded ?? false,
             () => _chooseDocument('licence_back'),
             key: const Key('onboarding-licence-back'),
@@ -587,13 +675,28 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
         const SizedBox(height: 16),
         _photoTile(
           'Aadhaar card photo',
-          'Front side · JPG or PNG · up to 6 MB',
+          'Front side · JPG or PNG · up to 5 MB',
           _application?.aadhaarUploaded ?? false,
           () => _chooseDocument('aadhaar'),
           key: const Key('onboarding-aadhaar'),
         ),
         const HireDNotice(
           'Your number is hidden on the review screen. A masked Aadhaar photo is welcome; keep your name, photo and last four digits readable.',
+        ),
+        const SizedBox(height: 16),
+        _photoTile(
+          'PAN card',
+          'JPG or PNG · up to 5 MB',
+          _application?.panUploaded ?? false,
+          () => _chooseDocument('pan'),
+          key: const Key('onboarding-pan'),
+        ),
+        _photoTile(
+          'Police clearance',
+          'Current PCC · JPG or PNG · up to 5 MB',
+          _application?.pccUploaded ?? false,
+          () => _chooseDocument('pcc'),
+          key: const Key('onboarding-pcc'),
         ),
         const SizedBox(height: 28),
         _label('Your driver photo'),
@@ -716,8 +819,8 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                 ),
               ],
             ),
-            _reviewRow('Full name', widget.fullName),
-            _reviewRow('City', widget.city),
+            _reviewRow('Full name', _name.text),
+            _reviewRow('City', _city.text),
             const Divider(height: 24),
             _reviewRow('Driving licence', _licence.text.toUpperCase()),
             _reviewRow(
@@ -758,6 +861,11 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
               checked: true,
             ),
             _reviewRow('Aadhaar card', 'Photo uploaded', checked: true),
+            _reviewRow(
+              'PAN and police clearance',
+              'Photos uploaded',
+              checked: true,
+            ),
             _reviewRow('Driver avatar', 'Selfie uploaded', checked: true),
           ],
         ),
@@ -801,7 +909,13 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       ),
       const SizedBox(height: 28),
       Text(
-        widget.service.isPreview ? 'Preview complete.' : 'You’re on your way.',
+        widget.service.isPreview
+            ? 'Preview complete.'
+            : _application?.status == 'approved'
+            ? 'You’re approved.'
+            : _application?.status == 'rejected'
+            ? 'Application reviewed.'
+            : 'You’re on your way.',
         textAlign: TextAlign.center,
         style: const TextStyle(
           fontSize: 28,
@@ -813,7 +927,10 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       Text(
         widget.service.isPreview
             ? 'Nothing was sent to HireD. Return to sign-in to test the dashboard.'
-            : 'Application submitted. HireD will review your documents before activating your profile. Sign in with the same mobile number after approval.',
+            : _application?.status == 'approved'
+            ? 'Your driver access is enabled. Sign in with the same verified mobile number.'
+            : _application?.reviewReason ??
+                  'Application submitted. HireD will review your documents before activating your profile. Check your status here after review.',
         textAlign: TextAlign.center,
         style: const TextStyle(
           color: HireDStyle.muted,
@@ -825,7 +942,14 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       HireDCard(
         child: Column(
           children: [
-            const HireDBadge('Review pending', color: Color(0xFF946200)),
+            HireDBadge(
+              _application?.status == 'approved'
+                  ? 'Approved'
+                  : _application?.status == 'rejected'
+                  ? 'Not approved'
+                  : 'Review pending',
+              color: const Color(0xFF946200),
+            ),
             const SizedBox(height: 16),
             const Text(
               'Application reference',
@@ -860,7 +984,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
 
   @override
   Widget build(BuildContext context) {
-    final submitted = _application?.submitted ?? false;
+    final submitted = _application != null && !_application!.editable;
     final titles = [
       'Your driving licence.',
       'A little more about you.',
@@ -904,9 +1028,19 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                       padding: EdgeInsets.only(bottom: 20),
                       child: LinearProgressIndicator(minHeight: 2),
                     ),
-                  if (submitted)
-                    _receipt()
-                  else if (_application == null) ...[
+                  if (submitted) ...[
+                    _receipt(),
+                    TextButton(
+                      onPressed: _busy ? null : _refresh,
+                      child: const Text('Refresh application status'),
+                    ),
+                    if (_application?.status != 'approved')
+                      TextButton(
+                        onPressed: _busy ? null : _delete,
+                        child: const Text('Delete application'),
+                      ),
+                    if (_error != null) HireDNotice(_error!, error: true),
+                  ] else if (_application == null) ...[
                     const SizedBox(height: 48),
                     const Text(
                       'Preparing your application…',
@@ -921,6 +1055,11 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                       ),
                     ],
                   ] else ...[
+                    if (_application?.status == 'corrections_requested')
+                      HireDNotice(
+                        _application?.reviewReason ??
+                            'Please correct the requested details and submit again.',
+                      ),
                     const Align(
                       alignment: Alignment.centerLeft,
                       child: HireDBadge(
@@ -978,7 +1117,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                             : () {
                                 FocusScope.of(context).unfocus();
                                 if (_step == 0 && _validateLicence())
-                                  _go(1);
+                                  _saveAndContinue(1);
                                 else if (_step == 1 && _validateIdentity())
                                   _go(2);
                                 else if (_step == 2)
@@ -1002,9 +1141,13 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                           child: const Text('Go back'),
                         ),
                       ),
+                    TextButton(
+                      onPressed: _busy ? null : _delete,
+                      child: const Text('Delete application'),
+                    ),
                     const SizedBox(height: 14),
                     const Text(
-                      'Photos upload privately as you add them. Finish the details in this session before submitting.',
+                      'Photos upload privately. Continue saves your details so you can return later. Enter your Aadhaar number only when submitting.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: HireDStyle.muted,

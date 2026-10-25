@@ -7,7 +7,7 @@ import 'package:http/http.dart' as http;
 import 'auth_config.dart';
 import 'identity_auth.dart';
 
-const maxDriverImageBytes = 6 * 1024 * 1024;
+const maxDriverImageBytes = 5 * 1024 * 1024;
 
 String? driverImageMime(Uint8List bytes) {
   if (bytes.length >= 3 &&
@@ -41,7 +41,12 @@ class DriverApplication {
   const DriverApplication(this.data);
   final Map<String, dynamic> data;
   String get id => data['id'] as String;
-  bool get submitted => data['status'] == 'submitted';
+  String get status => data['status'] as String? ?? 'draft';
+  bool get submitted => status == 'submitted';
+  bool get editable => ['draft', 'corrections_requested'].contains(status);
+  bool get panUploaded => data['pan_uploaded'] == true;
+  bool get pccUploaded => data['pcc_uploaded'] == true;
+  String? get reviewReason => data['review_reason'] as String?;
   bool get selfieUploaded => data['selfie_uploaded'] == true;
   bool get frontUploaded => data['licence_front_uploaded'] == true;
   bool get backUploaded => data['licence_back_uploaded'] == true;
@@ -113,7 +118,7 @@ class DriverOnboarding {
       );
     } on http.ClientException {
       throw const DriverAuthException(
-        'Unable to connect. Your application has not been submitted. Please retry.',
+        'The result could not be confirmed. Reopen your application to check its saved status before retrying.',
       );
     }
     if (response.statusCode == 401) {
@@ -176,13 +181,15 @@ class DriverOnboarding {
       'licence_front',
       'licence_back',
       'aadhaar',
+      'pan',
+      'pcc',
     ].contains(kind)) {
       throw const DriverAuthException('Choose a supported document.');
     }
     final mime = driverImageMime(bytes);
     if (bytes.isEmpty || bytes.length > maxDriverImageBytes || mime == null) {
       throw const DriverAuthException(
-        'Choose a JPG or PNG image smaller than 6 MB.',
+        'Choose a JPG or PNG image smaller than 5 MB.',
       );
     }
     return DriverApplication(
@@ -194,6 +201,17 @@ class DriverOnboarding {
         mime: mime,
       ),
     );
+  }
+
+  Future<DriverApplication> saveDraft(
+    String token,
+    Map<String, dynamic> details,
+  ) async => DriverApplication(
+    await _send('/draft', token, method: 'POST', body: details),
+  );
+
+  Future<void> deleteApplication(String token) async {
+    await _send('/delete', token, method: 'POST', body: {});
   }
 
   Future<Uint8List?> avatar(String token) async {

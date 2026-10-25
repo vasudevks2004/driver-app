@@ -22,6 +22,15 @@ class _Service extends DriverOnboarding {
     required String city,
   }) async => DriverApplication({...data});
   @override
+  Future<DriverApplication> saveDraft(
+    String token,
+    Map<String, dynamic> details,
+  ) async {
+    data.addAll(details);
+    return DriverApplication({...data});
+  }
+
+  @override
   Future<DriverApplication> upload(
     String token,
     String kind,
@@ -120,6 +129,10 @@ void main() {
     await tap(tester, find.byKey(const Key('onboarding-aadhaar')));
     await tap(tester, find.text('Choose from photos'));
     await tap(tester, find.byKey(const Key('onboarding-selfie')));
+    for (final kind in ['pan', 'pcc']) {
+      await tap(tester, find.byKey(Key('onboarding-$kind')));
+      await tap(tester, find.text('Choose from photos'));
+    }
   }
 
   testWidgets('guided licence controls fit a narrow phone', (tester) async {

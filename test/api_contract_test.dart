@@ -201,6 +201,52 @@ void main() {
     },
   );
   test(
+    'expired sessions refresh once for concurrent reads and socket loss keeps an upload retry safe',
+    () async {
+      final value = await control('/__case', {}),
+          store = MemoryOperationStorage(),
+          auth = authFor(value, store),
+          trip = value['tripId'];
+      auth.current = DriverSession(
+        token: auth.current!.token,
+        refreshToken: auth.current!.refreshToken,
+        expiresAt: DateTime(2000),
+        profile: auth.current!.profile,
+      );
+      final before =
+          (await control('/__state?tripId=$trip'))['refreshCount'] as int;
+      await Future.wait([
+        auth.request('/drivers/me'),
+        auth.request('/drivers/me'),
+      ]);
+      expect(
+        (await control('/__state?tripId=$trip'))['refreshCount'],
+        before + 1,
+      );
+      final photo = File('${temp.path}/interrupted.jpg');
+      await photo.writeAsBytes([255, 216, 255, 1]);
+      await control('/__fault', {'suffix': '/selfie', 'disconnect': true});
+      await expectLater(
+        auth.upload('/trips/$trip/selfie', photo.path),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.uncertain,
+            'lost connection',
+            true,
+          ),
+        ),
+      );
+      final saved = await control('/__state?tripId=$trip');
+      await auth.upload('/trips/$trip/selfie', photo.path);
+      expect(
+        (await control('/__state?tripId=$trip'))['objects'],
+        saved['objects'],
+      );
+      auth.dispose();
+    },
+  );
+
+  test(
     'no-expenses survives refresh, other-driver access and expired sessions are denied',
     () async {
       final one = await control('/__case', {}),

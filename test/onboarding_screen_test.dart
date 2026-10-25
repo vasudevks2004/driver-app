@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hired_driver/auth_config.dart';
 import 'package:hired_driver/design.dart';
@@ -70,7 +71,7 @@ void main() {
   late _Service service;
   setUp(() => service = _Service());
   tearDown(() => service.dispose());
-  Future<void> open(WidgetTester tester) async {
+  Future<void> open(WidgetTester tester, {bool cameraDenied = false}) async {
     tester.view.physicalSize = const Size(320, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -84,9 +85,13 @@ void main() {
           fullName: 'Test Driver',
           city: 'Kochi',
           onClose: () async {},
-          pickImage: (_, _) async => base64Decode(
-            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII=',
-          ),
+          pickImage: (_, _) async {
+            if (cameraDenied)
+              throw PlatformException(code: 'camera_access_denied');
+            return base64Decode(
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII=',
+            );
+          },
         ),
       ),
     );
@@ -134,6 +139,21 @@ void main() {
       await tap(tester, find.text('Choose from photos'));
     }
   }
+
+  testWidgets(
+    'denied camera access stays unconfirmed and offers a useful recovery message',
+    (tester) async {
+      await open(tester, cameraDenied: true);
+      await tap(tester, find.byKey(const Key('onboarding-licence-front')));
+      await tap(tester, find.text('Take a photo'));
+      expect(
+        find.textContaining('Camera or photo access is unavailable'),
+        findsOneWidget,
+      );
+      expect(service.data['licence_front_uploaded'], isNot(true));
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('guided licence controls fit a narrow phone', (tester) async {
     await open(tester);

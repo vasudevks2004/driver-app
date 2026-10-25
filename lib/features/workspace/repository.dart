@@ -14,7 +14,7 @@ class DriverRepository {
     final query = Uri(
       queryParameters: {
         'v': '2',
-        'limit': '20',
+        'limit': '25',
         'status': completed ? 'completed' : 'active',
         ...?cursor,
       },
@@ -24,7 +24,7 @@ class DriverRepository {
 
   Future<DriverWallet> wallet({Map<String, String>? cursor}) async {
     final query = Uri(
-      queryParameters: {'v': '2', 'limit': '20', ...?cursor},
+      queryParameters: {'v': '2', 'limit': '25', ...?cursor},
     ).query;
     return DriverWallet.fromJson(
       Map<String, dynamic>.from(

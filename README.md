@@ -1,77 +1,44 @@
 # HireD Driver
 
-Flutter driver app for Android and iOS. HireD supplies drivers; the business or customer supplies the vehicle.
+Flutter app for Android and iOS. HireD supplies drivers; businesses supply vehicles. The minimal HireD interface retains Home, Duties, Earnings and Profile.
 
-## Sign in and registration
-
-- **Google:** native Google account chooser, Supabase token exchange, then HireD driver-profile verification.
-- **Mobile number:** SMS OTP, code verification, resend countdown and change-number controls. Login does not create an account.
-- **Register as a new driver:** full name, mobile number and city; verify the number, then add licence number, date of birth, expiry, vehicle class, front/back photos, Aadhaar number and card photo, and a camera selfie for the driver avatar. Submit the application for HireD review. No password is required for phone accounts.
-- **Email:** existing administrator-issued email/password login remains available.
-- **DigiLocker:** consent-based, server-side OAuth with PKCE and a single-use callback. An issued licence can replace manual licence photos. Live use requires approved requester credentials; missing configuration keeps photo upload available.
-- Sessions are stored securely only after the backend confirms a driver profile. New or unlinked identities see activation instructions before dashboard access.
+This reliability release is on `feature/driver-onboarding`. Its shared backend must be reviewed and deployed with [UniT7 PR #12](https://github.com/Buildathon-HireD-Brototype-2026/UniT7/pull/12). Pulling the app branch does not update the deployed API.
 
 ## Run
 
-Use Flutter 3.29+ / Dart 3.7+. The checks use Flutter 3.35.7.
+Use Flutter 3.35.7 and JDK 17 for the checked Android setup. Create missing native folders in a separate temporary project, then configure them without overwriting app source:
 
 ```bash
-# Run once if android/ and ios/ have not been generated on your machine.
-flutter create . --platforms=android,ios --project-name=hired_driver --org=com.hired
 flutter pub get
-flutter run --dart-define-from-file=config/auth.json
+flutter create --platforms=android,ios --project-name hired_driver --org com.hired /path/to/hired-native
+python scripts/prepare-native.py /path/to/hired-native
+flutter devices
+flutter run -d YOUR_DEVICE_ID --dart-define-from-file=config/auth.json
 ```
 
-`config/auth.json` contains the existing HireD API URL and the project's **public** Supabase configuration. Add your Google OAuth client IDs there, or supply a different config file. Never put service-role keys, Google client secrets, SMS credentials or signing keys in mobile configuration.
+[Windows setup, emulator troubleshooting and validation](docs/reliability.md) include exact PowerShell commands. Keep the checkout outside OneDrive to avoid cache/file-lock interference. iOS builds require macOS/Xcode; distribution signing requires the owner's Apple credentials.
 
-To inspect the sample dashboard without connecting to real accounts:
+For the explicit in-memory preview:
 
 ```bash
-flutter run --dart-define=ALLOW_DEMO=true
+flutter run -t lib/main_dev.dart -d YOUR_DEVICE_ID
 ```
 
-Select **Explore demo** on the login screen. Sample duty `TRP-1028` can be started, a selfie captured, expenses logged, and closed with duty demo OTP `4826`. This code is only for the sample duty, never for authentication. Demo changes remain in memory.
+Use the number/code shown in its permanent LOCAL TEST banner. It sends no SMS, uploads no documents and creates no real accounts. Production sign-in uses verified backend membership.
 
-See [docs/DRIVER_ONBOARDING.md](docs/DRIVER_ONBOARDING.md) for private document storage, the onboarding service, DigiLocker credentials, and reviewer handoff. The HireD wordmark uses a transparent cropped SVG through one shared component.
+## Implemented behavior
 
-## Free local OTP preview
+- Raw private uploads, supported type/size checks, durable retry keys and receipt reconciliation.
+- Server-controlled wallet balances and signed earnings, settlements and reversals.
+- Six-digit partner completion, current-assignment selfie, expenses or explicit No expenses, with persisted state.
+- Resumable registration details, PAN/PCC/licence/Aadhaar photo collection, masked Aadhaar entry and review, and explicit review/correction/approval states.
+- Directions, authorised partner contact, foreground assignment updates, reconnect refresh, bounded pages and lazy history lists.
+- Honest loading, unavailable, stale and error states; failed reads do not become zero balances or empty duties.
 
-```bash
-flutter run -t lib/main_dev.dart
-```
+## Verification boundary
 
-Use **+91 9876543210** and test code **123456** to try login and driver registration. This debug-only preview uses local in-memory data and sends no SMS or documents. The yellow banner stays visible; existing production accounts/sessions are not accessed. A restart resets preview data.
+CI runs Flutter analysis/tests, Android debug build and native preview smoke checks. A separate macOS workflow builds the iOS simulator app. Full API/SQL/security/financial tests live in the private shared repository. The public client uses a small HTTP stand-in only for transport/retry tests.
 
-For real Indian SMS, the MSG91 delivery hook is implemented; activation requires your MSG91 key, approved Flow template and Supabase signing secret. See [docs/SMS_SETUP.md](docs/SMS_SETUP.md) for setup and exact readiness limits.
+Phone and Google were disabled in the connected project's settings on 25 October 2026. DigiLocker requester credentials are unavailable. Provider configuration and a recorded authenticated hosted journey are required before live delivery/verification can be claimed. Fixed codes exist only in test/explicit preview code. Document upload does not establish government verification.
 
-## Provider setup still required
-
-On 24 October 2026, the connected project's public Auth settings reported `google: false` and `phone: false`. The screens and HTTP flows are implemented, but Google and SMS sign-in cannot work live until those providers are configured and enabled. No live SMS was sent and no Google account was signed in during development.
-
-Follow [GITHUB_SETUP.md](GITHUB_SETUP.md) for Google Android/iOS registration and driver linking, and [docs/SMS_SETUP.md](docs/SMS_SETUP.md) for MSG91 activation.
-
-## Driver features
-
-Dashboard, online/offline availability, a fourteen-day availability calendar, assigned/completed duties, selfie and expense capture, duty completion OTP, per-duty wallet credits, and document upload controls.
-
-Driver duties, wallet balances and permissions come from the existing HireD backend. Authentication changes do not replace or alter its financial rules.
-
-## Validation and builds
-
-```bash
-flutter analyze --no-fatal-infos --no-fatal-warnings
-flutter test
-flutter build apk --release --dart-define-from-file=config/auth.json
-# Requires macOS, Xcode and signing:
-flutter build ipa --release --dart-define-from-file=config/auth.json
-```
-
-Tests cover phone/Google HTTP exchanges against local stand-ins, driver access verification, failed/expired codes, disabled providers, rate limits, cancellation, registration and narrow-screen layouts. Passing these checks does not prove live OAuth, real SMS delivery or device integration.
-
-This is a standalone driver repository. The existing admin/B2B portal source remains separate.
-
-## Driver interface refresh
-
-The driver workspace uses four tabs: Home, Duties, Earnings and Profile. Home prioritizes availability and the next assignment; Duties separates active and completed work. Registration uses Licence, Identity and Review steps, including an Aadhaar number and card photo, masked review details and explicit consent. Shared visual tokens and reusable cards live in `lib/design.dart`; duty presentation lives in `lib/driver_widgets.dart`.
-
-For a free local test, switch to `feature/driver-onboarding`, run `flutter pub get`, then `flutter run -t lib/main_dev.dart`. Use **+91 9876543210** and **123456**. This debug entry point shows a permanent local-test banner and never sends SMS, saves credentials or submits real documents. Real driver access uses `lib/main.dart` and the configured backend.
+The new shared backend owns encryption, trusted approval, audited document access, deletion queues and retention. The legacy server copies in this repository are retained for history; [do not deploy them for this release](supabase/README.md). Never place service-role, bridge, SMS or DigiLocker secrets in mobile configuration.

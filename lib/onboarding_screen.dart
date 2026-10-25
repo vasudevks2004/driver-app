@@ -188,10 +188,10 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
 
   Future<void> _pick(String kind, ImageSource source) => _run(() async {
     Uint8List? bytes;
-    if (widget.pickImage != null) {
-      bytes = await widget.pickImage!(kind, source);
-    } else {
-      try {
+    try {
+      if (widget.pickImage != null) {
+        bytes = await widget.pickImage!(kind, source);
+      } else {
         final image = await ImagePicker().pickImage(
           source: source,
           preferredCameraDevice: kind == 'selfie'
@@ -209,11 +209,11 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
             );
           bytes = await image.readAsBytes();
         }
-      } on PlatformException {
-        throw const DriverAuthException(
-          'Camera or photo access is unavailable. Allow access in your device settings and try again.',
-        );
       }
+    } on PlatformException {
+      throw const DriverAuthException(
+        'Camera or photo access is unavailable. Allow access in your device settings and try again.',
+      );
     }
     if (bytes == null) return;
     final application = await widget.service.upload(

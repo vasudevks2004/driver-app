@@ -3,8 +3,8 @@ description: HireD driver staffing app for Android and iOS.
 publish_to: none
 version: 1.0.0+1
 environment:
-  sdk: '>=3.7.0 <4.0.0'
-  flutter: '>=3.29.0'
+  sdk: '>=3.9.0 <4.0.0'
+  flutter: '>=3.35.0'
 dependencies:
   flutter:
     sdk: flutter
@@ -18,6 +18,7 @@ dependencies:
   flutter_svg: ^2.0.17
   google_sign_in: 7.2.0
   url_launcher: 6.3.2
+  realtime_client: 2.13.2
 dev_dependencies:
   integration_test:
     sdk: flutter

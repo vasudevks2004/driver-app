@@ -483,11 +483,19 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                       ),
                     ),
                     const SizedBox(height: 24),
-                    HireDSteps(
-                      labels: const ['Licence', 'Identity', 'Review'],
-                      current: _step,
+                    const HireDSteps(
+                      labels: ['Details', 'Mobile', 'Documents'],
+                      current: 2,
                     ),
-                    const SizedBox(height: 30),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Documents · ${_step + 1} of 3 · ${const ['Licence', 'Identity', 'Review'][_step]}',
+                      style: const TextStyle(
+                        color: HireDStyle.muted,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
                     Text(
                       titles[_step],
                       style: const TextStyle(

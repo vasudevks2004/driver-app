@@ -2,14 +2,29 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../../auth.dart';
 import '../../core/resource.dart';
+import '../../core/assignment_feed.dart';
 import '../duties/duty.dart';
 import '../earnings/earnings.dart';
 import 'repository.dart';
 
 class DriverWorkspace extends ChangeNotifier {
-  DriverWorkspace(this.auth) : repository = DriverRepository(auth);
+  DriverWorkspace(this.auth, {AssignmentFeed? assignmentFeed})
+    : repository = DriverRepository(auth),
+      _feed = assignmentFeed ?? SupabaseAssignmentFeed(auth.identity.config) {
+    _sessionSubscription = auth.sessionChanges.listen((session) {
+      if (session == null) {
+        unawaited(_feed.stop());
+      } else if (_foreground && !isDemo) {
+        unawaited(_feed.updateToken(session.token));
+      }
+    });
+  }
   final DriverAuth auth;
   final DriverRepository repository;
+  final AssignmentFeed _feed;
+  StreamSubscription<DriverSession?>? _sessionSubscription;
+  bool _assignmentRefreshPending = false, _assignmentRefreshing = false;
+  String? assignmentMessage;
   Resource<Map<String, dynamic>> profile = const Resource();
   Resource<DutyPage> active = const Resource(), completed = const Resource();
   Resource<DriverWallet> earnings = const Resource();
@@ -53,12 +68,16 @@ class DriverWorkspace extends ChangeNotifier {
     selected = const Resource();
     _changed();
     _startTimer();
+    _connectFeed();
   }
 
   void reset() {
     busy = false;
     _epoch++;
     _timer?.cancel();
+    unawaited(_feed.stop());
+    _assignmentRefreshPending = false;
+    assignmentMessage = null;
     profile = const Resource();
     active = const Resource();
     completed = const Resource();
@@ -82,7 +101,57 @@ class DriverWorkspace extends ChangeNotifier {
   void foreground(bool value) {
     final old = _foreground;
     _foreground = value;
-    if (value && !old && !isDemo && auth.current != null) unawaited(refresh());
+    if (!value) unawaited(_feed.stop());
+    if (value && !old && !isDemo && auth.current != null) {
+      _connectFeed();
+      unawaited(refresh());
+    }
+  }
+
+  void _connectFeed() {
+    final session = auth.current;
+    if (session == null || isDemo || !_foreground || _disposed) return;
+    final epoch = _epoch;
+    unawaited(
+      _feed.connect(
+        session.token,
+        () {
+          if (epoch == _epoch && !_disposed) {
+            _assignmentRefreshPending = true;
+            unawaited(_drainAssignments());
+          }
+        },
+        (connected) {
+          if (epoch != _epoch || _disposed) return;
+          assignmentMessage = connected
+              ? null
+              : 'Assignment updates are delayed. Refresh to check for changes.';
+          _changed();
+        },
+      ),
+    );
+  }
+
+  Future<void> _drainAssignments() async {
+    if (!_assignmentRefreshPending ||
+        _assignmentRefreshing ||
+        busy ||
+        active.loading ||
+        !_foreground ||
+        isDemo ||
+        _disposed)
+      return;
+    _assignmentRefreshPending = false;
+    _assignmentRefreshing = true;
+    final epoch = _epoch;
+    try {
+      await loadDuties();
+      if (epoch == _epoch && page == 4 && selected.value != null)
+        await select(selected.value!.id, open: false);
+    } finally {
+      _assignmentRefreshing = false;
+      if (_assignmentRefreshPending) unawaited(_drainAssignments());
+    }
   }
 
   void navigate(int next) {
@@ -169,7 +238,10 @@ class DriverWorkspace extends ChangeNotifier {
         }
       }
     } finally {
-      if (epoch == _epoch) _changed();
+      if (epoch == _epoch) {
+        _changed();
+        unawaited(_drainAssignments());
+      }
     }
   }
 
@@ -256,6 +328,7 @@ class DriverWorkspace extends ChangeNotifier {
       if (epoch == _epoch) {
         busy = false;
         _changed();
+        unawaited(_drainAssignments());
       }
     }
   }
@@ -327,6 +400,8 @@ class DriverWorkspace extends ChangeNotifier {
     _disposed = true;
     _epoch++;
     _timer?.cancel();
+    _sessionSubscription?.cancel();
+    unawaited(_feed.stop());
     super.dispose();
   }
 }

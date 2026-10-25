@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -109,8 +110,13 @@ class DriverAuth {
   }
 
   DriverSession? current;
+  final _sessionChanges = StreamController<DriverSession?>.broadcast();
+  Stream<DriverSession?> get sessionChanges => _sessionChanges.stream;
 
-  void dispose() => identity.dispose();
+  void dispose() {
+    _sessionChanges.close();
+    identity.dispose();
+  }
 
   void _requireServer() {
     if (baseUrl.isEmpty) {
@@ -210,12 +216,14 @@ class DriverAuth {
       if (generation != _generation || prior != null && current != prior)
         throw const DriverAuthException('This session has ended.');
       current = session;
+      if (!_sessionChanges.isClosed) _sessionChanges.add(session);
     });
   }
 
   Future<void> _clear() async {
     _generation++;
     current = null;
+    if (!_sessionChanges.isClosed) _sessionChanges.add(null);
     await _sessionAction(_sessions.clear);
   }
 

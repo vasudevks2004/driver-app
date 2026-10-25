@@ -232,19 +232,7 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
               const SizedBox(height: 16),
             ],
           ],
-          if (duty.status == DutyStatus.assigned)
-            _action(
-              'Start driver duty',
-              () => state.perform(() async {
-                if (state.isDemo) {
-                  _demo(duty, {'status': 'Ongoing'});
-                } else {
-                  await state.repository.start(duty.id);
-                  await _updated(duty.id);
-                }
-              }),
-            ),
-          if (duty.status == DutyStatus.ongoing) ...[
+          if (duty.active) ...[
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: Text(
@@ -259,7 +247,7 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
                   Text(
                     duty.selfie
                         ? 'Selfie uploaded for this assignment.'
-                        : 'Take a selfie before completing this duty.',
+                        : 'Take a selfie for this assignment before starting.',
                     style: const TextStyle(
                       color: HireDStyle.muted,
                       fontSize: 13,
@@ -274,6 +262,27 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
                 ],
               ),
             ),
+          ],
+          if (duty.status == DutyStatus.assigned) ...[
+            if (!duty.selfie)
+              const HireDNotice(
+                'Upload your duty selfie to enable Start duty.',
+              ),
+            const SizedBox(height: 12),
+            _action(
+              'Start driver duty',
+              () => state.perform(() async {
+                if (state.isDemo) {
+                  _demo(duty, {'status': 'Ongoing'});
+                } else {
+                  await state.repository.start(duty.id);
+                  await _updated(duty.id);
+                }
+              }),
+              enabled: duty.selfie,
+            ),
+          ],
+          if (duty.status == DutyStatus.ongoing) ...[
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
               child: Text(

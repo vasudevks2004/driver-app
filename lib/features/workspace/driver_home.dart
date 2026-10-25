@@ -276,6 +276,11 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
           body: Column(
             children: [
               if (workspace.busy) const LinearProgressIndicator(minHeight: 2),
+              if (workspace.assignmentMessage != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: HireDNotice(workspace.assignmentMessage!),
+                ),
               if (workspace.notice != null)
                 Material(
                   color: HireDStyle.tint,

@@ -633,7 +633,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
       ),
       const SizedBox(height: 18),
       const HireDNotice(
-        'Have these ready: driving licence, Aadhaar number and card photo, and a selfie.',
+        'Have these ready: driving licence, Aadhaar number and card photo, PAN card, police clearance certificate (PCC), and a selfie.',
         icon: Icons.fact_check_outlined,
       ),
       const SizedBox(height: 14),

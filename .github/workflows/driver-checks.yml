@@ -24,6 +24,12 @@ jobs:
           git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
           echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
       - run: flutter pub get
+      - name: Save resolved dependency lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: driver-dependency-lock
+          path: pubspec.lock
+          retention-days: 7
       - name: Check Dart syntax
         run: dart format --output=none lib test
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings

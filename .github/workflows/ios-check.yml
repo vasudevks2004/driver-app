@@ -2,7 +2,7 @@ name: iOS simulator build
 on:
   push:
     branches: [feature/driver-onboarding]
-    paths: ['.github/workflows/ios-check.yml','scripts/prepare-native.py','pubspec.yaml']
+    paths: ['.github/workflows/ios-check.yml','scripts/prepare-native.py','pubspec.yaml','lib/**']
   workflow_dispatch:
 permissions:
   contents: read

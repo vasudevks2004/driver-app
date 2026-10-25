@@ -7,6 +7,26 @@ import 'package:http/http.dart' as http;
 import 'package:hired_driver/api.dart';
 import 'package:hired_driver/auth.dart';
 import 'package:hired_driver/core/pending_operations.dart';
+import 'package:hired_driver/core/session_store.dart';
+import 'package:hired_driver/identity_auth.dart';
+
+class _BlockingSessionStore implements SessionStore {
+  final started = Completer<void>(), release = Completer<void>();
+  String? value;
+  @override
+  Future<String?> read() async => value;
+  @override
+  Future<void> write(String value) async {
+    started.complete();
+    await release.future;
+    this.value = value;
+  }
+
+  @override
+  Future<void> clear() async {
+    value = null;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -242,6 +262,43 @@ void main() {
         (await control('/__state?tripId=$trip'))['objects'],
         saved['objects'],
       );
+      auth.dispose();
+    },
+  );
+
+  test(
+    'sign-out during a secure refresh write cannot restore the session',
+    () async {
+      final data = await control('/__case', {}),
+          store = _BlockingSessionStore();
+      final auth = DriverAuth(
+        '$base/admin/api/v1',
+        sessionStore: store,
+        pending: PendingOperations(storage: MemoryOperationStorage()),
+      );
+      auth.current = DriverSession(
+        token: data['token'] as String,
+        refreshToken: data['refreshToken'] as String,
+        expiresAt: DateTime(2000),
+        profile: Map<String, dynamic>.from(data['profile'] as Map),
+      );
+      final refreshed = auth.refresh();
+      // Attach the failure expectation before releasing the blocked secure write.
+      final rejected = expectLater(
+        refreshed,
+        throwsA(isA<DriverAuthException>()),
+      );
+      await store.started.future;
+      final signedOut = auth.logout();
+      for (var n = 0; n < 50 && auth.current != null; n++) {
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      expect(auth.current, isNull);
+      store.release.complete();
+      await rejected;
+      await signedOut;
+      expect(auth.current, isNull);
+      expect(store.value, isNull);
       auth.dispose();
     },
   );

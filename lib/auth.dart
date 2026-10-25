@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'core/pending_operations.dart';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'core/session_store.dart';
 
 import 'api.dart';
 import 'auth_config.dart';
@@ -86,7 +86,9 @@ class DriverAuth {
     this.baseUrl, {
     SupabaseIdentityAuth? identity,
     PendingOperations? pending,
-  }) : pending = pending ?? PendingOperations(),
+    SessionStore? sessionStore,
+  }) : _sessions = sessionStore ?? const SecureSessionStore(),
+       pending = pending ?? PendingOperations(),
        identity =
            identity ??
            SupabaseIdentityAuth(const DriverAuthConfig.fromEnvironment());
@@ -95,8 +97,16 @@ class DriverAuth {
   final PendingOperations pending;
   Future<DriverSession>? _refreshing;
   int _generation = 0;
-  static const _storage = FlutterSecureStorage();
-  static const _sessionKey = 'hired.driver.session.v1';
+  final SessionStore _sessions;
+  Future<void> _sessionTail = Future.value();
+  Future<T> _sessionAction<T>(Future<T> Function() action) {
+    final future = _sessionTail.then((_) => action());
+    _sessionTail = future.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return future;
+  }
 
   DriverSession? current;
 
@@ -135,16 +145,26 @@ class DriverAuth {
 
   Future<DriverSession> verifyPhoneOtp(String phone, String code) async {
     _requireServer();
-    return _acceptIdentity(await identity.verifyPhoneOtp(phone, code));
+    final generation = _generation;
+    return _acceptIdentity(
+      await identity.verifyPhoneOtp(phone, code),
+      expectedGeneration: generation,
+    );
   }
 
   Future<DriverSession?> loginWithGoogle() async {
     _requireServer();
+    final generation = _generation;
     final result = await identity.signInWithGoogle();
-    return result == null ? null : _acceptIdentity(result);
+    return result == null
+        ? null
+        : _acceptIdentity(result, expectedGeneration: generation);
   }
 
-  Future<DriverSession> _acceptIdentity(IdentitySession identitySession) async {
+  Future<DriverSession> _acceptIdentity(
+    IdentitySession identitySession, {
+    required int expectedGeneration,
+  }) async {
     try {
       // Only the trusted driver service can establish a driver's membership.
       final profile = await DriverApi(
@@ -157,7 +177,7 @@ class DriverAuth {
         'expiresIn': identitySession.expiresIn,
         'profile': profile,
       });
-      await _save(session);
+      await _save(session, expectedGeneration: expectedGeneration);
       return session;
     } catch (error) {
       // Never retain an identity-only session as a driver session.
@@ -175,23 +195,35 @@ class DriverAuth {
 
   DriverApi get _api => DriverApi(baseUrl, current?.token ?? '');
 
-  Future<void> _save(DriverSession session) async {
-    await _storage.write(key: _sessionKey, value: jsonEncode(session.toJson()));
-    current = session;
+  Future<void> _save(
+    DriverSession session, {
+    int? expectedGeneration,
+    DriverSession? prior,
+  }) {
+    final generation = expectedGeneration ?? _generation;
+    return _sessionAction(() async {
+      if (generation != _generation || prior != null && current != prior)
+        throw const DriverAuthException('This session has ended.');
+      await _sessions.write(jsonEncode(session.toJson()));
+      // A sign-out may happen while secure storage is writing. Its queued clear
+      // runs after this write; a late refresh must never restore current access.
+      if (generation != _generation || prior != null && current != prior)
+        throw const DriverAuthException('This session has ended.');
+      current = session;
+    });
   }
 
   Future<void> _clear() async {
     _generation++;
     current = null;
-    await _storage.delete(key: _sessionKey);
-    // Pre-login builds stored a non-renewable access token here.
-    await _storage.delete(key: 'driver_token');
+    await _sessionAction(_sessions.clear);
   }
 
   Future<DriverSession?> restore() async {
-    final saved = await _storage.read(key: _sessionKey);
+    final generation = _generation;
+    final saved = await _sessionAction(_sessions.read);
+    if (generation != _generation) return null;
     if (saved == null) {
-      await _storage.delete(key: 'driver_token');
       return null;
     }
     try {
@@ -218,13 +250,14 @@ class DriverAuth {
     if (baseUrl.isEmpty) {
       throw StateError('Driver server is not configured for this build.');
     }
+    final generation = _generation;
     final result = await DriverApi(baseUrl, '').request(
       '/auth/driver/login',
       method: 'POST',
       body: {'email': email.trim(), 'password': password},
     );
     final session = DriverSession.fromResponse(result);
-    await _save(session);
+    await _save(session, expectedGeneration: generation);
     return session;
   }
 
@@ -252,7 +285,7 @@ class DriverAuth {
         throw const DriverAuthException(
           'This session has ended. Please sign in again.',
         );
-      await _save(next);
+      await _save(next, expectedGeneration: generation, prior: saved);
       return next;
     } on ApiException catch (error) {
       if (error.statusCode == 401 || error.statusCode == 403) await _clear();
@@ -384,6 +417,7 @@ class DriverAuth {
     String currentPassword,
     String newPassword,
   ) async {
+    final generation = _generation;
     await ensureFresh();
     final result = await _api.request(
       '/auth/driver/password',
@@ -391,7 +425,7 @@ class DriverAuth {
       body: {'currentPassword': currentPassword, 'newPassword': newPassword},
     );
     final next = DriverSession.fromResponse(result);
-    await _save(next);
+    await _save(next, expectedGeneration: generation);
     return next;
   }
 

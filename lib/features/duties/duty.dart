@@ -1,8 +1,9 @@
 DateTime? _date(Object? value) =>
     DateTime.tryParse(value?.toString() ?? '')?.toLocal();
-num? readMoney(Object? value) => value is num && value.isFinite
-    ? value
-    : num.tryParse(value?.toString() ?? '');
+num? readMoney(Object? value) {
+  final parsed = value is num ? value : num.tryParse(value?.toString() ?? '');
+  return parsed != null && parsed.isFinite ? parsed : null;
+}
 
 enum DutyStatus { assigned, ongoing, closed, unavailable }
 
@@ -11,11 +12,17 @@ class DutyExpense {
   final String? id;
   final String description;
   final num amount;
-  factory DutyExpense.fromJson(Map<String, dynamic> json) => DutyExpense(
-    id: json['id']?.toString(),
-    description: json['description']?.toString() ?? '',
-    amount: readMoney(json['amount']) ?? 0,
-  );
+  factory DutyExpense.fromJson(Map<String, dynamic> json) {
+    final amount = readMoney(json['amount']);
+    if (amount == null || amount < 0) {
+      throw const FormatException('Invalid expense amount');
+    }
+    return DutyExpense(
+      id: json['id']?.toString(),
+      description: json['description']?.toString() ?? '',
+      amount: amount,
+    );
+  }
   Map<String, dynamic> toJson() => {
     'id': id,
     'description': description,
@@ -70,8 +77,9 @@ class DriverDuty {
   };
   factory DriverDuty.fromJson(Map<String, dynamic> j) {
     final id = j['id'];
-    if (id is! String || id.isEmpty)
+    if (id is! String || id.isEmpty) {
       throw const FormatException('Invalid duty identity');
+    }
     final status = switch (j['status']?.toString().toLowerCase()) {
       'assigned' => DutyStatus.assigned,
       'ongoing' => DutyStatus.ongoing,
@@ -141,8 +149,9 @@ class DutyPage {
     final map = data is Map
         ? Map<String, dynamic>.from(data)
         : <String, dynamic>{'trips': data};
-    if (map['trips'] is! List)
+    if (map['trips'] is! List) {
       throw const FormatException('Invalid duties response');
+    }
     final items = (map['trips'] as List)
         .map((x) => DriverDuty.fromJson(Map<String, dynamic>.from(x as Map)))
         .toList();

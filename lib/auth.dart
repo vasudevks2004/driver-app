@@ -208,13 +208,15 @@ class DriverAuth {
   }) {
     final generation = expectedGeneration ?? _generation;
     return _sessionAction(() async {
-      if (generation != _generation || prior != null && current != prior)
+      if (generation != _generation || prior != null && current != prior) {
         throw const DriverAuthException('This session has ended.');
+      }
       await _sessions.write(jsonEncode(session.toJson()));
       // A sign-out may happen while secure storage is writing. Its queued clear
       // runs after this write; a late refresh must never restore current access.
-      if (generation != _generation || prior != null && current != prior)
+      if (generation != _generation || prior != null && current != prior) {
         throw const DriverAuthException('This session has ended.');
+      }
       current = session;
       if (!_sessionChanges.isClosed) _sessionChanges.add(session);
     });
@@ -289,10 +291,11 @@ class DriverAuth {
         body: {'refreshToken': saved.refreshToken},
       );
       final next = DriverSession.fromResponse(result);
-      if (generation != _generation || current != saved)
+      if (generation != _generation || current != saved) {
         throw const DriverAuthException(
           'This session has ended. Please sign in again.',
         );
+      }
       await _save(next, expectedGeneration: generation, prior: saved);
       return next;
     } on ApiException catch (error) {
@@ -314,10 +317,11 @@ class DriverAuth {
 
   String get _subject {
     final id = current?.profile['id'];
-    if (id is! String || id.isEmpty)
+    if (id is! String || id.isEmpty) {
       throw const DriverAuthException(
         'Your driver profile must be verified again.',
       );
+    }
     return id;
   }
 
@@ -336,14 +340,16 @@ class DriverAuth {
     var previousCommitted = false;
     for (final entry in unresolved.entries) {
       final receipt = await request('/drivers/me/operations/${entry.value}');
-      if (_subject != subject)
+      if (_subject != subject) {
         throw const DriverAuthException('The driver session changed.');
-      if (receipt is! Map)
+      }
+      if (receipt is! Map) {
         throw const ApiException(
           'The earlier action could not be confirmed.',
           503,
           uncertain: true,
         );
+      }
       previousCommitted = previousCommitted || receipt['committed'] == true;
       if (receipt['committed'] != true && receipt['cancelled'] != true) {
         Future<dynamic> cancel() => _api.request(
@@ -358,19 +364,20 @@ class DriverAuth {
         } on ApiException catch (error) {
           if (error.statusCode != 401) rethrow;
           await refresh();
-          if (_subject != subject)
+          if (_subject != subject) {
             throw const DriverAuthException('The driver session changed.');
+          }
           cancelled = await cancel();
         }
         if (cancelled is! Map ||
-            cancelled['cancelled'] != true && cancelled['committed'] != true)
+            cancelled['cancelled'] != true && cancelled['committed'] != true) {
           throw const ApiException(
             'The earlier action could not be reconciled.',
             503,
             uncertain: true,
           );
-        previousCommitted =
-            previousCommitted || (cancelled as Map)['committed'] == true;
+        }
+        previousCommitted = previousCommitted || cancelled['committed'] == true;
       }
       await pending.acknowledge(baseUrl, subject, entry.key);
     }
@@ -404,17 +411,19 @@ class DriverAuth {
       } on ApiException catch (error) {
         if (error.statusCode != 401) rethrow;
         await refresh();
-        if (_subject != subject)
+        if (_subject != subject) {
           throw const DriverAuthException(
             'The driver session changed. Please refresh.',
           );
+        }
         result = await send();
       }
       if (key != null) await pending.acknowledge(baseUrl, subject, fingerprint);
       return result;
     } on ApiException catch (error) {
-      if (key != null && !error.uncertain)
+      if (key != null && !error.uncertain) {
         await pending.acknowledge(baseUrl, subject, fingerprint);
+      }
       rethrow;
     }
   }
@@ -423,8 +432,9 @@ class DriverAuth {
     await ensureFresh();
     final subject = _subject;
     final file = File(filePath);
-    if (await file.length() > driverUploadLimit)
+    if (await file.length() > driverUploadLimit) {
       throw const ApiException('Choose a file up to 5 MB.', 400);
+    }
     final digest = sha256.convert(await file.readAsBytes()).toString();
     final fingerprint = operationFingerprint('UPLOAD', path, {
       'sha256': digest,
@@ -440,14 +450,16 @@ class DriverAuth {
       } on ApiException catch (error) {
         if (error.statusCode != 401) rethrow;
         await refresh();
-        if (_subject != subject)
+        if (_subject != subject) {
           throw const DriverAuthException('The driver session changed.');
+        }
         await send();
       }
       await pending.acknowledge(baseUrl, subject, fingerprint);
     } on ApiException catch (error) {
-      if (!error.uncertain)
+      if (!error.uncertain) {
         await pending.acknowledge(baseUrl, subject, fingerprint);
+      }
       rethrow;
     }
   }

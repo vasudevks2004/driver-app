@@ -139,7 +139,7 @@ extension _ApplicationSections on _DriverOnboardingScreenState {
           const SizedBox(height: 8),
           _label('Vehicle class'),
           DropdownButtonFormField<String>(
-            value: _vehicleClass,
+            initialValue: _vehicleClass,
             isExpanded: true,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.directions_car_outlined, size: 20),

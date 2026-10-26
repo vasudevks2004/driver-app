@@ -74,11 +74,13 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _digiPending && !_busy)
+    if (state == AppLifecycleState.resumed && _digiPending && !_busy) {
       _refresh();
+    }
     // Do not leave a revealed identity number on the app switcher's next frame.
-    if (state == AppLifecycleState.inactive && _showAadhaar && mounted)
+    if (state == AppLifecycleState.inactive && _showAadhaar && mounted) {
       setState(() => _showAadhaar = false);
+    }
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -90,12 +92,13 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
     try {
       await action();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = e is DriverAuthException
               ? e.message
               : 'We could not complete that step. Please retry.',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -107,7 +110,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       name: widget.fullName,
       city: widget.city,
     );
-    if (mounted)
+    if (mounted) {
       setState(() {
         _application = application;
         _licence.text = application.data['licence_number']?.toString() ?? '';
@@ -119,15 +122,17 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
         );
         _vehicleClass = application.data['vehicle_class']?.toString() ?? 'LMV';
       });
+    }
   });
 
   Future<void> _refresh() => _run(() async {
     final application = await widget.service.status(widget.session.accessToken);
-    if (mounted)
+    if (mounted) {
       setState(() {
         _application = application;
         _digiPending = application.digiLockerStatus == 'pending';
       });
+    }
   });
 
   Future<void> _saveAndContinue(int step) => _run(() async {
@@ -203,10 +208,11 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
           requestFullMetadata: false,
         );
         if (image != null) {
-          if (await image.length() > maxDriverImageBytes)
+          if (await image.length() > maxDriverImageBytes) {
             throw const DriverAuthException(
               'Choose an image smaller than 5 MB.',
             );
+          }
           bytes = await image.readAsBytes();
         }
       }
@@ -221,11 +227,12 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       kind,
       bytes,
     );
-    if (mounted)
+    if (mounted) {
       setState(() {
         _application = application;
         if (kind == 'selfie') _selfie = bytes;
       });
+    }
   });
 
   Future<void> _chooseDocument(String kind) async {
@@ -283,10 +290,11 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       final opened =
           await (widget.openBrowser?.call(uri) ??
               launchUrl(uri, mode: LaunchMode.externalApplication));
-      if (!opened)
+      if (!opened) {
         throw const DriverAuthException(
           'Could not open DigiLocker. Please try again.',
         );
+      }
       if (mounted) setState(() => _digiPending = true);
     });
   }
@@ -308,7 +316,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
       firstDate: first,
       lastDate: last,
     );
-    if (selected != null && mounted)
+    if (selected != null && mounted) {
       setState(() {
         if (birth) {
           _birthDate = selected;
@@ -316,6 +324,7 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
           _expiry = selected;
         }
       });
+    }
   }
 
   bool _validateLicence() {
@@ -387,13 +396,14 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
         licenceExpiry: _expiry!,
         vehicleClass: _vehicleClass,
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _application = result;
           _selfie = null;
           _aadhaar.clear();
           _showAadhaar = false;
         });
+      }
     });
   }
 
@@ -539,9 +549,9 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                             ? null
                             : () {
                                 FocusScope.of(context).unfocus();
-                                if (_step == 0 && _validateLicence())
+                                if (_step == 0 && _validateLicence()) {
                                   _saveAndContinue(1);
-                                else if (_step == 1 && _validateIdentity())
+                                } else if (_step == 1 && _validateIdentity())
                                   _go(2);
                                 else if (_step == 2)
                                   _submit();

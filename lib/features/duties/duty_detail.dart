@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../api.dart';
+import '../../core/expense_validation.dart';
 import '../../design.dart';
 import '../../driver_widgets.dart';
 import '../workspace/controller.dart';
@@ -55,8 +56,9 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
         );
       }
       if (photo == null) return;
-      if (await photo.length() > driverUploadLimit)
+      if (await photo.length() > driverUploadLimit) {
         throw const ApiException('Choose a photo up to 5 MB.', 400);
+      }
       if (state.isDemo) {
         _demo(duty, {'selfie': true});
         return;
@@ -72,12 +74,12 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
     await state.perform(() async {
       if (title.isEmpty ||
           title.length > 300 ||
-          !RegExp(r'^\d{1,12}(\.\d{1,2})?$').hasMatch(value) ||
-          num.tryParse(value) == null)
+          !isValidExpenseAmount(value, allowZero: none)) {
         throw const ApiException(
-          'Enter a description and a valid amount with up to two decimal places.',
+          'Enter a description and a positive amount with up to two decimal places. Use No expenses if nothing was spent.',
           400,
         );
+      }
       if (state.isDemo) {
         _demo(duty, {
           'expensesSubmitted': true,
@@ -109,11 +111,12 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
 
   Future<void> _launch(Uri uri) async {
     await state.perform(() async {
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication))
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         throw const ApiException(
           'Could not open that action on this device.',
           400,
         );
+      }
     });
   }
 
@@ -389,17 +392,19 @@ class _DutyDetailPageState extends State<DutyDetailPage> {
                   _action(
                     'Verify & complete duty',
                     () => state.perform(() async {
-                      if (!RegExp(r'^[0-9]{6}$').hasMatch(code.text))
+                      if (!RegExp(r'^[0-9]{6}$').hasMatch(code.text)) {
                         throw const ApiException(
                           'Enter the six-digit partner code.',
                           400,
                         );
+                      }
                       if (state.isDemo) {
-                        if (code.text != '482901')
+                        if (code.text != '482901') {
                           throw const ApiException(
                             'Use the six-digit demo code shown above.',
                             400,
                           );
+                        }
                         _demo(duty, {'status': 'Closed'});
                       } else {
                         await state.repository.close(duty.id, code.text);

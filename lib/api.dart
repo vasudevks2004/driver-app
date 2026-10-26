@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 
@@ -36,15 +35,18 @@ String? driverFileType(Uint8List bytes) {
   if (bytes.length >= 3 &&
       bytes[0] == 255 &&
       bytes[1] == 216 &&
-      bytes[2] == 255)
+      bytes[2] == 255) {
     return 'image/jpeg';
+  }
   const png = [137, 80, 78, 71, 13, 10, 26, 10];
   if (bytes.length >= 8 &&
-      List.generate(8, (i) => bytes[i] == png[i]).every((v) => v))
+      List.generate(8, (i) => bytes[i] == png[i]).every((v) => v)) {
     return 'image/png';
+  }
   if (bytes.length >= 5 &&
-      ascii.decode(bytes.take(5).toList(), allowInvalid: true) == '%PDF-')
+      ascii.decode(bytes.take(5).toList(), allowInvalid: true) == '%PDF-') {
     return 'application/pdf';
+  }
   return null;
 }
 
@@ -88,12 +90,13 @@ class DriverApi {
         // JSON responses are bounded by the paginated contract. Uploads return JSON too.
         final chunks = <int>[];
         await for (final chunk in stream.stream) {
-          if (chunks.length + chunk.length > 2 * 1024 * 1024)
+          if (chunks.length + chunk.length > 2 * 1024 * 1024) {
             throw const ApiException(
               'The response was too large to confirm. Refresh before retrying.',
               0,
               uncertain: true,
             );
+          }
           chunks.addAll(chunk);
         }
         return http.Response.bytes(
@@ -184,8 +187,9 @@ class DriverApi {
   }) async {
     final file = File(filePath);
     final length = await file.length();
-    if (length < 1 || length > driverUploadLimit)
+    if (length < 1 || length > driverUploadLimit) {
       throw const ApiException('Choose a file up to 5 MB.', 400);
+    }
     final bytes = await file.readAsBytes();
     final mime = driverFileType(bytes);
     if (mime == null ||
@@ -196,8 +200,9 @@ class DriverApi {
       );
     }
     final name = filePath.replaceAll('\\', '/').split('/').last;
-    if (name.isEmpty || name.length > 180)
+    if (name.isEmpty || name.length > 180) {
       throw const ApiException('Choose a shorter filename.', 400);
+    }
     final request = http.Request('POST', _url(path));
     request.headers.addAll({
       'Authorization': 'Bearer $token',

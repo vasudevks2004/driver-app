@@ -185,10 +185,11 @@ class SupabaseIdentityAuth {
           headers: {'apikey': config.publishableKey},
         )
         .timeout(timeout);
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw const DriverAuthException(
         'Sign-in methods could not be checked. Retry when connected.',
       );
+    }
     final data = jsonDecode(response.body) as Map;
     final external = data['external'] as Map? ?? {};
     return DriverAuthMethods(

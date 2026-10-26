@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../auth.dart';
@@ -57,20 +56,22 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) =>
       workspace.foreground(state == AppLifecycleState.resumed);
   Future<void> _restore() async {
-    if (mounted)
+    if (mounted) {
       setState(() {
         restoring = true;
         restoreError = null;
       });
+    }
     try {
       final session = await auth.restore();
       if (mounted && session != null) await _activate(session);
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => restoreError =
               'Your saved session could not be verified. Check your connection and retry.',
         );
+      }
     } finally {
       if (mounted) setState(() => restoring = false);
     }
@@ -88,8 +89,9 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
         widget.onboardingOverride ?? DriverOnboarding(auth.identity.config);
     try {
       final image = await service.avatar(session.token);
-      if (mounted && auth.current?.token == session.token)
+      if (mounted && auth.current?.token == session.token) {
         setState(() => avatar = image);
+      }
     } catch (_) {
     } finally {
       if (widget.onboardingOverride == null) service.dispose();
@@ -151,10 +153,11 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
                   if (oldPassword.text.isEmpty ||
                       newPassword.text != confirm.text ||
                       utf8.encode(newPassword.text).length < 12 ||
-                      utf8.encode(newPassword.text).length > 72)
+                      utf8.encode(newPassword.text).length > 72) {
                     throw const DriverAuthException(
                       'Enter the temporary password and matching new passwords of 12–72 bytes.',
                     );
+                  }
                   final session = await auth.changePassword(
                     oldPassword.text,
                     newPassword.text,
@@ -179,7 +182,7 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: workspace,
     builder: (context, _) {
-      if (restoring)
+      if (restoring) {
         return const Scaffold(
           body: Center(
             child: Column(
@@ -192,7 +195,8 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
             ),
           ),
         );
-      if (restoreError != null)
+      }
+      if (restoreError != null) {
         return Scaffold(
           body: SafeArea(
             child: Center(
@@ -222,15 +226,18 @@ class _DriverHomeState extends State<DriverHome> with WidgetsBindingObserver {
             ),
           ),
         );
-      if (!workspace.isDemo && auth.current == null)
+      }
+      if (!workspace.isDemo && auth.current == null) {
         return DriverAuthScreen(
           auth: auth,
           onboarding: widget.onboardingOverride,
           onAuthenticated: _activate,
           onDemo: kDebugMode && allowDemo ? () => workspace.demo() : null,
         );
-      if (!workspace.isDemo && auth.current!.mustChangePassword)
+      }
+      if (!workspace.isDemo && auth.current!.mustChangePassword) {
         return _passwordScreen();
+      }
       return PopScope(
         canPop: workspace.page != 4,
         onPopInvokedWithResult: (didPop, _) {

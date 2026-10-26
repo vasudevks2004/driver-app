@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -86,8 +85,9 @@ void main() {
           city: 'Kochi',
           onClose: () async {},
           pickImage: (_, _) async {
-            if (cameraDenied)
+            if (cameraDenied) {
               throw PlatformException(code: 'camera_access_denied');
+            }
             return base64Decode(
               'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aRZkAAAAASUVORK5CYII=',
             );

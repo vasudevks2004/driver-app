@@ -148,7 +148,9 @@ void main() {
       await state.loadDuties();
       final before = auth.reads;
       final action = state.perform(() => gate.future);
-      for (var i = 0; i < 10; i++) feed.changed!();
+      for (var i = 0; i < 10; i++) {
+        feed.changed!();
+      }
       expect(auth.reads, before);
       gate.complete();
       await action;

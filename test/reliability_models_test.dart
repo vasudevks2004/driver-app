@@ -5,6 +5,7 @@ import 'package:hired_driver/core/pending_operations.dart';
 import 'package:hired_driver/features/workspace/controller.dart';
 import 'package:hired_driver/development/preview_services.dart';
 import 'package:hired_driver/auth.dart';
+import 'package:hired_driver/core/expense_validation.dart';
 
 class _FailingAuth extends PreviewDriverAuth {
   _FailingAuth(super.application);
@@ -17,6 +18,57 @@ class _FailingAuth extends PreviewDriverAuth {
 }
 
 void main() {
+  test('non-finite numeric and string values cannot enter money models', () {
+    for (final value in [
+      double.nan,
+      double.infinity,
+      double.negativeInfinity,
+      'NaN',
+      'Infinity',
+      '-Infinity',
+    ]) {
+      expect(readMoney(value), isNull);
+      expect(
+        () => DutyExpense.fromJson({'description': 'Parking', 'amount': value}),
+        throwsFormatException,
+      );
+      expect(
+        () => DriverWallet.fromJson({'balance': value, 'transactions': []}),
+        throwsFormatException,
+      );
+      expect(
+        () => WalletTransaction.fromJson({
+          'kind': 'trip_credit',
+          'amount': 100,
+          'signedAmount': value,
+        }),
+        throwsFormatException,
+      );
+    }
+    expect(readMoney('125.50'), 125.5);
+  });
+  test('expense amounts follow the server precision and range', () {
+    for (final input in [
+      'NaN',
+      'Infinity',
+      '-Infinity',
+      '-1',
+      '1e3',
+      '1.001',
+      '10000000000',
+      '0',
+      '0.00',
+      '',
+      ' 10 ',
+    ]) {
+      expect(isValidExpenseAmount(input), isFalse, reason: input);
+    }
+    for (final input in ['0.01', '25', '100.50', '9999999999.99']) {
+      expect(isValidExpenseAmount(input), isTrue, reason: input);
+    }
+    expect(isValidExpenseAmount('0', allowZero: true), isTrue);
+    expect(isValidExpenseAmount('NaN', allowZero: true), isFalse);
+  });
   test(
     'wallet signed effects come from the ledger, including either reversal direction',
     () {

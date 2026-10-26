@@ -6,12 +6,10 @@ This reliability release is on `feature/driver-onboarding`. Its shared backend m
 
 ## Run
 
-Use Flutter 3.35.7 (Dart 3.9 or newer) and JDK 17 for the checked Android setup. Create missing native folders in a separate temporary project, then configure them without overwriting app source:
+Use Flutter 3.35.7 (Dart 3.9 or newer) and JDK 17. Android and iOS projects are committed with fixed app identities; build the checked-in projects directly:
 
 ```bash
 flutter pub get
-flutter create --platforms=android,ios --project-name hired_driver --org com.hired /path/to/hired-native
-python scripts/prepare-native.py /path/to/hired-native
 flutter devices
 flutter run -d YOUR_DEVICE_ID --dart-define-from-file=config/auth.json
 ```
@@ -38,6 +36,8 @@ Use the number/code shown in its permanent LOCAL TEST banner. It sends no SMS, u
 ## Verification boundary
 
 CI runs Flutter analysis/tests, Android debug build and native preview smoke checks. A separate macOS workflow builds the iOS simulator app. Full API/SQL/security/financial tests live in the private shared repository. The public client uses a small HTTP stand-in only for transport/retry tests.
+
+Formatting and analyzer warnings/information fail CI. Native configuration and release-signing setup are documented in [native release setup](docs/native-release.md). The [26 October CTO review follow-up](docs/cto-review-2026-10-26.md) distinguishes current branch fixes from live rollout blockers.
 
 Phone and Google were disabled in the connected project's settings on 25 October 2026. DigiLocker requester credentials are unavailable. Provider configuration and a recorded authenticated hosted journey are required before live delivery/verification can be claimed. Fixed codes exist only in test/explicit preview code. Document upload does not establish government verification.
 

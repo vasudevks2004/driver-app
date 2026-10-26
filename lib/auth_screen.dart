@@ -79,18 +79,20 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   Future<void> _checkMethods() async {
     try {
       final methods = await widget.auth.methods();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _methods = methods;
           _methodsError = null;
           if (!methods.phone && methods.email) _emailMode = true;
         });
+      }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => _methodsError =
               'Could not check sign-in availability. Check your connection and retry.',
         );
+      }
     }
   }
 
@@ -381,7 +383,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
           SizedBox(
             width: 94,
             child: DropdownButtonFormField<String>(
-              value: _countryCode,
+              initialValue: _countryCode,
               isExpanded: true,
               decoration: _decoration('', null).copyWith(
                 contentPadding: const EdgeInsets.symmetric(
@@ -801,12 +803,13 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
       : PopScope(
           canPop: _view == _AuthView.login && !_busy,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop && !_busy)
+            if (!didPop && !_busy) {
               _navigate(
                 _view == _AuthView.otp && _registering
                     ? _AuthView.register
                     : _AuthView.login,
               );
+            }
           },
           child: Scaffold(
             backgroundColor: Colors.white,

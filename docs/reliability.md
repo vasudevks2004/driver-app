@@ -14,17 +14,15 @@ git clone --branch feature/driver-onboarding https://github.com/vasudevks2004/dr
 cd HireD_Driver
 flutter doctor -v
 flutter pub get
-flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$env:TEMP\hired-native"
-python scripts/prepare-native.py "$env:TEMP\hired-native"
 flutter emulators
 flutter emulators --launch YOUR_AVD_ID
 flutter devices
 flutter run -d YOUR_DEVICE_ID --dart-define-from-file=config/auth.json
 ```
 
-Use the ID actually listed by `flutter devices`; emulator-5554 is not guaranteed. Do not repeatedly clean/pull while Gradle is downloading dependencies. The first native build downloads SDK/Gradle artifacts and is slower than hot reload. If the specific Kotlin incremental-cache close error returns, stop Gradle (`cd android; .\gradlew --stop; cd ..`), remove only the generated build folder, then rebuild outside OneDrive. Preserve android/ios changes if you already generated or customized native projects; the preparation script only copies missing platform folders.
+Use the ID actually listed by `flutter devices`; emulator-5554 is not guaranteed. Do not repeatedly clean/pull while Gradle is downloading dependencies. The first native build downloads SDK/Gradle artifacts and is slower than hot reload. If the specific Kotlin incremental-cache close error returns, stop Gradle (`cd android; .\gradlew --stop; cd ..`), remove only the generated build folder, then rebuild outside OneDrive. Android and iOS projects are committed; do not regenerate or replace them when running the app.
 
-The script adds release Internet permission, camera usage and iOS camera/photo descriptions. Google native URL scheme/signing configuration remains provider-specific and must be completed with the actual client IDs. Do not put a service role key, SMS key, bridge key or DigiLocker secret in Dart/config/auth.json. Its existing publishable key is a public client configuration, not privileged backend authorization.
+The committed projects include Internet/camera permission, iOS camera/photo descriptions and HireD icons. Google native URL scheme/signing configuration remains provider-specific and must be completed with the actual client IDs. See native-release.md for app IDs and signing. Do not put a service role key, SMS key, bridge key or DigiLocker secret in Dart/config/auth.json. Its existing publishable key is a public client configuration, not privileged backend authorization.
 
 For explicit in-memory preview only: `flutter run -t lib/main_dev.dart -d YOUR_DEVICE_ID`. The visible LOCAL TEST banner contains the synthetic number/code. Preview creates no real identity, uploads no documents and grants no real driver access. Fixed codes are absent from production main.dart's imports.
 

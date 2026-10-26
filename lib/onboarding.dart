@@ -226,8 +226,9 @@ class DriverOnboarding {
         .timeout(timeout);
     if (response.statusCode != 200 ||
         response.bodyBytes.length > maxDriverImageBytes ||
-        driverImageMime(response.bodyBytes) == null)
+        driverImageMime(response.bodyBytes) == null) {
       return null;
+    }
     return response.bodyBytes;
   }
 

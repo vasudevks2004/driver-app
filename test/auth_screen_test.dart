@@ -32,8 +32,9 @@ class _ScreenAuth extends DriverAuth {
 
   @override
   Future<DriverSession> verifyPhoneOtp(String phone, String code) async {
-    if (rejectCode)
+    if (rejectCode) {
       throw const DriverAuthException('The code is incorrect or expired.');
+    }
     throw const DriverActivationRequired();
   }
 

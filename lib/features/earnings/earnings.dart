@@ -35,11 +35,16 @@ class WalletTransaction {
       _ => WalletKind.adjustment,
     };
     final amount = readMoney(j['amount']);
-    if (amount == null || !amount.isFinite)
+    if (amount == null || !amount.isFinite) {
       throw const FormatException('Invalid ledger amount');
+    }
     // Older responses have no signed ledger effect. A reversal's direction is never guessed.
+    final suppliedSigned = readMoney(j['signedAmount']);
+    if (j['signedAmount'] != null && suppliedSigned == null) {
+      throw const FormatException('Invalid signed ledger amount');
+    }
     final signed =
-        readMoney(j['signedAmount']) ??
+        suppliedSigned ??
         switch (kind) {
           WalletKind.earning => amount,
           WalletKind.settlement => -amount,
@@ -78,8 +83,9 @@ class DriverWallet {
   final Map<String, String>? nextCursor;
   factory DriverWallet.fromJson(Map<String, dynamic> j) {
     final balance = readMoney(j['balance']);
-    if (balance == null || !balance.isFinite || j['transactions'] is! List)
+    if (balance == null || !balance.isFinite || j['transactions'] is! List) {
       throw const FormatException('Invalid wallet response');
+    }
     final c = j['nextCursor'];
     return DriverWallet(
       balance: balance,

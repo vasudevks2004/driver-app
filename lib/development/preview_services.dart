@@ -14,10 +14,11 @@ const _applicantToken = 'development-only-applicant';
 const _driverToken = 'development-only-driver';
 
 void requireDevelopmentBuild() {
-  if (!kDebugMode)
+  if (!kDebugMode) {
     throw UnsupportedError(
       'The OTP preview is available only in debug builds.',
     );
+  }
 }
 
 /// Even an accidentally inherited transport method cannot contact a server.
@@ -130,8 +131,9 @@ class PreviewOnboarding extends DriverOnboarding {
   };
 
   void _owner(String token) {
-    if (token != _applicantToken)
+    if (token != _applicantToken) {
       throw const DriverAuthException('This is a local preview session only.');
+    }
   }
 
   DriverApplication get _snapshot => DriverApplication({..._data});
@@ -143,8 +145,9 @@ class PreviewOnboarding extends DriverOnboarding {
     required String city,
   }) async {
     _owner(token);
-    if (_data['status'] == 'draft')
+    if (_data['status'] == 'draft') {
       _data.addAll({'full_name': name, 'city': city});
+    }
     return _snapshot;
   }
 
@@ -179,10 +182,11 @@ class PreviewOnboarding extends DriverOnboarding {
     Uint8List bytes,
   ) async {
     _owner(token);
-    if (_data['status'] != 'draft')
+    if (_data['status'] != 'draft') {
       throw const DriverAuthException(
         'This preview application was already submitted.',
       );
+    }
     if (![
           'selfie',
           'licence_front',
@@ -312,8 +316,9 @@ class PreviewDriverAuth extends DriverAuth {
 
   @override
   Future<DriverSession> ensureFresh() async {
-    if (current == null)
+    if (current == null) {
       throw const DriverAuthException('Sign in with the test number first.');
+    }
     return current!;
   }
 
@@ -331,8 +336,9 @@ class PreviewDriverAuth extends DriverAuth {
     final route = uri.path;
     if (route == '/drivers/me') return _profile;
     if (route == '/drivers/me/trips') return <Map<String, dynamic>>[];
-    if (route == '/drivers/me/wallet')
+    if (route == '/drivers/me/wallet') {
       return {'balance': 0, 'transactions': <Map<String, dynamic>>[]};
+    }
     if (route == '/drivers/me/availability' && method == 'PATCH') {
       _online = body?['online'] == true;
       _unavailableDates

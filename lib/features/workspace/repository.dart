@@ -1,4 +1,6 @@
 import '../../auth.dart';
+import '../../api.dart';
+import '../../core/expense_validation.dart';
 import '../duties/duty.dart';
 import '../earnings/earnings.dart';
 
@@ -43,6 +45,17 @@ class DriverRepository {
   }
 
   Future<void> expense(String id, String description, String amount) async {
+    if (description.trim().isEmpty ||
+        description.trim().length > 300 ||
+        !isValidExpenseAmount(
+          amount,
+          allowZero: description == 'No expenses',
+        )) {
+      throw const ApiException(
+        'Enter a valid expense description and amount.',
+        400,
+      );
+    }
     await auth.request(
       '/trips/$id/expenses',
       method: 'POST',

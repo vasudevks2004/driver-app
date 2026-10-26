@@ -59,7 +59,7 @@ class _WorkspaceAuth extends PreviewDriverAuth {
     final uri = Uri.parse(path);
     final route = uri.path;
     if (route == '/drivers/me') return {'name': 'Vasudev', 'online': true};
-    if (route == '/drivers/me/trips')
+    if (route == '/drivers/me/trips') {
       return {
         'trips': _trips
             .where(
@@ -72,9 +72,11 @@ class _WorkspaceAuth extends PreviewDriverAuth {
         'activeCount': 1,
         'completedCount': 1,
       };
-    if (route.startsWith('/drivers/me/trips/'))
+    }
+    if (route.startsWith('/drivers/me/trips/')) {
       return {..._trips.firstWhere((t) => t['id'] == route.split('/').last)};
-    if (route == '/drivers/me/wallet')
+    }
+    if (route == '/drivers/me/wallet') {
       return {
         'balance': 2400,
         'transactions': [
@@ -94,6 +96,7 @@ class _WorkspaceAuth extends PreviewDriverAuth {
           },
         ],
       };
+    }
     return super.request(path, method: method, body: body);
   }
 }

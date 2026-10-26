@@ -1,8 +1,10 @@
 name: iOS simulator build
 on:
   push:
-    branches: [feature/driver-onboarding]
-    paths: ['.github/workflows/ios-check.yml','scripts/prepare-native.py','pubspec.yaml','lib/**']
+    branches: [main, 'feature/**']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**']
+  pull_request:
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,8 +23,4 @@ jobs:
           git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
           echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
       - run: flutter pub get
-      - name: Prepare native shells
-        run: |
-          flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$RUNNER_TEMP/hired-native"
-          python3 scripts/prepare-native.py "$RUNNER_TEMP/hired-native"
       - run: flutter build ios --simulator --debug --dart-define-from-file=config/auth.json

@@ -45,12 +45,13 @@ class DriverProfilePage extends StatelessWidget {
       expires = DateFormat('yyyy-MM-dd').format(date);
     }
     await state.perform(() async {
-      if (!state.isDemo)
+      if (!state.isDemo) {
         await state.auth.upload(
           '/drivers/me/documents/$kind',
           file.path!,
           expiresOn: expires,
         );
+      }
       await state.loadProfile();
     });
   }

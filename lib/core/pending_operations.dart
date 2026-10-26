@@ -111,10 +111,11 @@ class PendingOperations {
         'An earlier action still needs confirmation. Retry its original details or reconnect to reconcile it.',
       );
     }
-    if (values.length >= 100)
+    if (values.length >= 100) {
       throw StateError(
         'Too many changes need confirmation. Contact HireD support.',
       );
+    }
     final key = newRequestKey();
     values[fingerprint] = {'key': key, if (group != null) 'group': group};
     await _storage.write(scope, jsonEncode(values));

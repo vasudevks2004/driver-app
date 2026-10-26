@@ -30,9 +30,10 @@ jobs:
           name: driver-dependency-lock
           path: pubspec.lock
           retention-days: 7
-      - name: Check Dart syntax
-        run: dart format --output=none lib test
-      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Enforce Dart formatting
+        run: dart format --output=none --set-exit-if-changed lib test integration_test
+      - name: Enforce analyzer and lint results
+        run: flutter analyze --fatal-infos --fatal-warnings
       - name: Test driver flows and render UI previews
         run: flutter test
         env:
@@ -48,10 +49,6 @@ jobs:
           retention-days: 7
       - name: Select supported JDK 17 for Android Gradle
         run: flutter config --jdk-dir "$JAVA_HOME_17_X64"
-      - name: Generate native shells without replacing app source
-        run: |
-          flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$RUNNER_TEMP/hired-native"
-          python3 scripts/prepare-native.py "$RUNNER_TEMP/hired-native"
       - name: Build Android debug app
         run: flutter build apk --debug --dart-define-from-file=config/auth.json
       - name: Save Android debug app
@@ -83,8 +80,6 @@ jobs:
         run: |
           flutter config --jdk-dir "$JAVA_HOME_17_X64"
           flutter pub get
-          flutter create --platforms=android,ios --project-name hired_driver --org com.hired "$RUNNER_TEMP/hired-native"
-          python3 scripts/prepare-native.py "$RUNNER_TEMP/hired-native"
       - name: Boot Android 35 emulator
         run: |
           export PATH="$ANDROID_HOME/platform-tools:$PATH"

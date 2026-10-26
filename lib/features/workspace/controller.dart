@@ -93,8 +93,9 @@ class DriverWorkspace extends ChangeNotifier {
   void _startTimer() {
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 60), (_) {
-      if (_foreground && !busy && !active.loading && !isDemo)
+      if (_foreground && !busy && !active.loading && !isDemo) {
         unawaited(loadDuties());
+      }
     });
   }
 
@@ -139,15 +140,17 @@ class DriverWorkspace extends ChangeNotifier {
         active.loading ||
         !_foreground ||
         isDemo ||
-        _disposed)
+        _disposed) {
       return;
+    }
     _assignmentRefreshPending = false;
     _assignmentRefreshing = true;
     final epoch = _epoch;
     try {
       await loadDuties();
-      if (epoch == _epoch && page == 4 && selected.value != null)
+      if (epoch == _epoch && page == 4 && selected.value != null) {
         await select(selected.value!.id, open: false);
+      }
     } finally {
       _assignmentRefreshing = false;
       if (_assignmentRefreshPending) unawaited(_drainAssignments());
@@ -160,15 +163,17 @@ class DriverWorkspace extends ChangeNotifier {
     if (next == 1 &&
         showCompleted &&
         !completed.available &&
-        !completed.loading)
+        !completed.loading) {
       unawaited(loadDuties(completedOnly: true));
+    }
     _changed();
   }
 
   void filter(bool value) {
     showCompleted = value;
-    if (value && !completed.available && !completed.loading)
+    if (value && !completed.available && !completed.loading) {
       unawaited(loadDuties(completedOnly: true));
+    }
     _changed();
   }
 
@@ -225,9 +230,10 @@ class DriverWorkspace extends ChangeNotifier {
         completed = old.received(next);
       } else {
         active = old.received(next);
-        if (oldIds != null && value.items.any((x) => !oldIds.contains(x.id)))
+        if (oldIds != null && value.items.any((x) => !oldIds.contains(x.id))) {
           notice =
               'Your assignments have changed. Open Duties for the latest details.';
+        }
       }
     } catch (e) {
       if (epoch == _epoch && !_disposed) {
@@ -280,8 +286,9 @@ class DriverWorkspace extends ChangeNotifier {
   Future<void> refresh() async {
     if (isDemo) return;
     await Future.wait([loadProfile(), loadDuties(), loadWallet()]);
-    if (page == 4 && selected.value != null)
+    if (page == 4 && selected.value != null) {
       await select(selected.value!.id, open: false);
+    }
   }
 
   Future<void> select(String id, {bool open = true}) async {
@@ -305,8 +312,9 @@ class DriverWorkspace extends ChangeNotifier {
       final value = await repository.duty(id);
       if (epoch == _epoch && !_disposed) selected = selected.received(value);
     } catch (e) {
-      if (epoch == _epoch && !_disposed)
+      if (epoch == _epoch && !_disposed) {
         selected = Resource(error: _message(e));
+      }
     } finally {
       if (epoch == _epoch) _changed();
     }
@@ -389,8 +397,9 @@ class DriverWorkspace extends ChangeNotifier {
             .toList(),
       ),
     );
-    if (duty.complete)
+    if (duty.complete) {
       completed = Resource(value: DutyPage([duty, ...?completed.value?.items]));
+    }
     selected = Resource(value: duty);
     _changed();
   }

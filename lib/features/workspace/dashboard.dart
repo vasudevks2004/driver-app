@@ -51,12 +51,13 @@ class DriverDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = [...?state.active.value?.items]
       ..sort((a, b) {
-        if (a.status != b.status)
+        if (a.status != b.status) {
           return a.statusLabel == 'Ongoing'
               ? -1
               : b.statusLabel == 'Ongoing'
               ? 1
               : 0;
+        }
         return (a.scheduledAt ?? DateTime(9999)).compareTo(
           b.scheduledAt ?? DateTime(9999),
         );

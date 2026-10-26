@@ -551,10 +551,11 @@ class _DriverOnboardingScreenState extends State<DriverOnboardingScreen>
                                 FocusScope.of(context).unfocus();
                                 if (_step == 0 && _validateLicence()) {
                                   _saveAndContinue(1);
-                                } else if (_step == 1 && _validateIdentity())
+                                } else if (_step == 1 && _validateIdentity()) {
                                   _go(2);
-                                else if (_step == 2)
+                                } else if (_step == 2) {
                                   _submit();
+                                }
                               },
                         child: Text(
                           _busy

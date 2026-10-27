@@ -466,10 +466,11 @@ void main() {
         await fixture.delete(recursive: true);
         HttpOverrides.global = previousHttp;
         report['finishedAtUtc'] = DateTime.now().toUtc().toIso8601String();
-        if (outputPath != null)
+        if (outputPath != null) {
           await File(
             outputPath,
           ).writeAsString(const JsonEncoder.withIndent('  ').convert(report));
+        }
       }
     },
     skip: configPath == null

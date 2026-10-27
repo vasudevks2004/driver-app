@@ -1,0 +1,7 @@
+{
+  "API_URL": "https://hired-unit7-staging.pages.dev/admin/api/v1",
+  "SUPABASE_URL": "https://wudshomvlnzblpsmntmt.supabase.co",
+  "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_wXl21GYlBOnRksxB2DbKng_v7OBYeoT",
+  "GOOGLE_WEB_CLIENT_ID": "",
+  "GOOGLE_IOS_CLIENT_ID": ""
+}

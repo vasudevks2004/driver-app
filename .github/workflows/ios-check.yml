@@ -1,0 +1,26 @@
+name: iOS simulator build
+on:
+  push:
+    branches: [main, 'feature/**']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**']
+  pull_request:
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Install pinned Flutter 3.35.7
+        run: |
+          git init "$RUNNER_TEMP/hired-flutter"
+          git -C "$RUNNER_TEMP/hired-flutter" remote add origin https://github.com/flutter/flutter.git
+          git -C "$RUNNER_TEMP/hired-flutter" fetch --depth 1 origin adc901062556672b4138e18a4dc62a4be8f4b3c2
+          git -C "$RUNNER_TEMP/hired-flutter" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
+          echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
+      - run: flutter pub get
+      - run: flutter build ios --simulator --debug --dart-define-from-file=config/auth.json

@@ -8,6 +8,16 @@ import 'package:http/http.dart' as http;
 import 'auth_config.dart';
 import 'auth_validation.dart';
 
+class DriverAuthMethods {
+  const DriverAuthMethods({
+    required this.phone,
+    required this.google,
+    required this.email,
+    this.known = true,
+  });
+  final bool phone, google, email, known;
+}
+
 class DriverAuthException implements Exception {
   const DriverAuthException(this.message);
   final String message;
@@ -142,8 +152,12 @@ class SupabaseIdentityAuth {
           'The code is incorrect or expired. Please try again or request a new code.',
         );
       }
+      if (code == 'phone_provider_disabled' || code == 'otp_disabled') {
+        throw const DriverAuthException(
+          'SMS sign-in is not configured yet. Please use email sign-in or contact HireD support.',
+        );
+      }
       if (code == 'provider_disabled' ||
-          code == 'phone_provider_disabled' ||
           code == 'sms_send_failed' ||
           code == 'validation_failed') {
         throw const DriverAuthException(
@@ -160,6 +174,33 @@ class SupabaseIdentityAuth {
       );
     }
     return payload;
+  }
+
+  Future<DriverAuthMethods> methods() async {
+    requireConfigured();
+    final base = config.supabaseUrl.replaceFirst(RegExp(r'/$'), '');
+    final response = await _client
+        .get(
+          Uri.parse('$base/auth/v1/settings'),
+          headers: {'apikey': config.publishableKey},
+        )
+        .timeout(timeout);
+    if (response.statusCode != 200) {
+      throw const DriverAuthException(
+        'Sign-in methods could not be checked. Retry when connected.',
+      );
+    }
+    final data = jsonDecode(response.body) as Map;
+    final external = data['external'] as Map? ?? {};
+    return DriverAuthMethods(
+      phone: external['phone'] == true,
+      email: external['email'] == true,
+      google:
+          external['google'] == true &&
+          config.googleWebClientId.isNotEmpty &&
+          (defaultTargetPlatform != TargetPlatform.iOS ||
+              config.googleIosClientId.isNotEmpty),
+    );
   }
 
   Future<void> sendPhoneOtp(

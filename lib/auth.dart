@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
+import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'core/pending_operations.dart';
 
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'core/session_store.dart';
 
 import 'api.dart';
 import 'auth_config.dart';
@@ -80,18 +83,40 @@ class DriverSession {
 }
 
 class DriverAuth {
-  DriverAuth(this.baseUrl, {SupabaseIdentityAuth? identity})
-    : identity =
-          identity ??
-          SupabaseIdentityAuth(const DriverAuthConfig.fromEnvironment());
+  DriverAuth(
+    this.baseUrl, {
+    SupabaseIdentityAuth? identity,
+    PendingOperations? pending,
+    SessionStore? sessionStore,
+  }) : _sessions = sessionStore ?? const SecureSessionStore(),
+       pending = pending ?? PendingOperations(),
+       identity =
+           identity ??
+           SupabaseIdentityAuth(const DriverAuthConfig.fromEnvironment());
   final String baseUrl;
   final SupabaseIdentityAuth identity;
-  static const _storage = FlutterSecureStorage();
-  static const _sessionKey = 'hired.driver.session.v1';
+  final PendingOperations pending;
+  Future<DriverSession>? _refreshing;
+  int _generation = 0;
+  final SessionStore _sessions;
+  Future<void> _sessionTail = Future.value();
+  Future<T> _sessionAction<T>(Future<T> Function() action) {
+    final future = _sessionTail.then((_) => action());
+    _sessionTail = future.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace __) {},
+    );
+    return future;
+  }
 
   DriverSession? current;
+  final _sessionChanges = StreamController<DriverSession?>.broadcast();
+  Stream<DriverSession?> get sessionChanges => _sessionChanges.stream;
 
-  void dispose() => identity.dispose();
+  void dispose() {
+    _sessionChanges.close();
+    identity.dispose();
+  }
 
   void _requireServer() {
     if (baseUrl.isEmpty) {
@@ -100,6 +125,8 @@ class DriverAuth {
       );
     }
   }
+
+  Future<DriverAuthMethods> methods() => identity.methods();
 
   Future<void> sendPhoneOtp(
     String phone, {
@@ -116,18 +143,34 @@ class DriverAuth {
     );
   }
 
+  /// A verified applicant may submit documents, but has no driver permissions.
+  Future<IdentitySession> verifyRegistrationOtp(String phone, String code) {
+    _requireServer();
+    return identity.verifyPhoneOtp(phone, code);
+  }
+
   Future<DriverSession> verifyPhoneOtp(String phone, String code) async {
     _requireServer();
-    return _acceptIdentity(await identity.verifyPhoneOtp(phone, code));
+    final generation = _generation;
+    return _acceptIdentity(
+      await identity.verifyPhoneOtp(phone, code),
+      expectedGeneration: generation,
+    );
   }
 
   Future<DriverSession?> loginWithGoogle() async {
     _requireServer();
+    final generation = _generation;
     final result = await identity.signInWithGoogle();
-    return result == null ? null : _acceptIdentity(result);
+    return result == null
+        ? null
+        : _acceptIdentity(result, expectedGeneration: generation);
   }
 
-  Future<DriverSession> _acceptIdentity(IdentitySession identitySession) async {
+  Future<DriverSession> _acceptIdentity(
+    IdentitySession identitySession, {
+    required int expectedGeneration,
+  }) async {
     try {
       // Only the trusted driver service can establish a driver's membership.
       final profile = await DriverApi(
@@ -140,7 +183,7 @@ class DriverAuth {
         'expiresIn': identitySession.expiresIn,
         'profile': profile,
       });
-      await _save(session);
+      await _save(session, expectedGeneration: expectedGeneration);
       return session;
     } catch (error) {
       // Never retain an identity-only session as a driver session.
@@ -158,22 +201,39 @@ class DriverAuth {
 
   DriverApi get _api => DriverApi(baseUrl, current?.token ?? '');
 
-  Future<void> _save(DriverSession session) async {
-    await _storage.write(key: _sessionKey, value: jsonEncode(session.toJson()));
-    current = session;
+  Future<void> _save(
+    DriverSession session, {
+    int? expectedGeneration,
+    DriverSession? prior,
+  }) {
+    final generation = expectedGeneration ?? _generation;
+    return _sessionAction(() async {
+      if (generation != _generation || prior != null && current != prior) {
+        throw const DriverAuthException('This session has ended.');
+      }
+      await _sessions.write(jsonEncode(session.toJson()));
+      // A sign-out may happen while secure storage is writing. Its queued clear
+      // runs after this write; a late refresh must never restore current access.
+      if (generation != _generation || prior != null && current != prior) {
+        throw const DriverAuthException('This session has ended.');
+      }
+      current = session;
+      if (!_sessionChanges.isClosed) _sessionChanges.add(session);
+    });
   }
 
   Future<void> _clear() async {
+    _generation++;
     current = null;
-    await _storage.delete(key: _sessionKey);
-    // Pre-login builds stored a non-renewable access token here.
-    await _storage.delete(key: 'driver_token');
+    if (!_sessionChanges.isClosed) _sessionChanges.add(null);
+    await _sessionAction(_sessions.clear);
   }
 
   Future<DriverSession?> restore() async {
-    final saved = await _storage.read(key: _sessionKey);
+    final generation = _generation;
+    final saved = await _sessionAction(_sessions.read);
+    if (generation != _generation) return null;
     if (saved == null) {
-      await _storage.delete(key: 'driver_token');
       return null;
     }
     try {
@@ -200,19 +260,30 @@ class DriverAuth {
     if (baseUrl.isEmpty) {
       throw StateError('Driver server is not configured for this build.');
     }
+    final generation = _generation;
     final result = await DriverApi(baseUrl, '').request(
       '/auth/driver/login',
       method: 'POST',
       body: {'email': email.trim(), 'password': password},
     );
     final session = DriverSession.fromResponse(result);
-    await _save(session);
+    await _save(session, expectedGeneration: generation);
     return session;
   }
 
-  Future<DriverSession> refresh() async {
+  Future<DriverSession> refresh() {
+    if (_refreshing != null) return _refreshing!;
+    final future = _refreshOnce();
+    _refreshing = future;
+    return future.whenComplete(() {
+      if (identical(_refreshing, future)) _refreshing = null;
+    });
+  }
+
+  Future<DriverSession> _refreshOnce() async {
     final saved = current;
-    if (saved == null) throw StateError('Please sign in again.');
+    final generation = _generation;
+    if (saved == null) throw const DriverAuthException('Please sign in again.');
     try {
       final result = await DriverApi(baseUrl, '').request(
         '/auth/driver/refresh',
@@ -220,12 +291,15 @@ class DriverAuth {
         body: {'refreshToken': saved.refreshToken},
       );
       final next = DriverSession.fromResponse(result);
-      await _save(next);
+      if (generation != _generation || current != saved) {
+        throw const DriverAuthException(
+          'This session has ended. Please sign in again.',
+        );
+      }
+      await _save(next, expectedGeneration: generation, prior: saved);
       return next;
     } on ApiException catch (error) {
-      if (error.statusCode == 401 || error.statusCode == 403) {
-        await _clear();
-      }
+      if (error.statusCode == 401 || error.statusCode == 403) await _clear();
       rethrow;
     }
   }
@@ -241,41 +315,160 @@ class DriverAuth {
     return saved;
   }
 
+  String get _subject {
+    final id = current?.profile['id'];
+    if (id is! String || id.isEmpty) {
+      throw const DriverAuthException(
+        'Your driver profile must be verified again.',
+      );
+    }
+    return id;
+  }
+
+  Future<String> _beginOperation(
+    String method,
+    String path,
+    String fingerprint,
+  ) async {
+    final subject = _subject, group = operationFingerprint(method, path, null);
+    final unresolved = await pending.unresolved(
+      baseUrl,
+      subject,
+      group: group,
+      except: fingerprint,
+    );
+    var previousCommitted = false;
+    for (final entry in unresolved.entries) {
+      final receipt = await request('/drivers/me/operations/${entry.value}');
+      if (_subject != subject) {
+        throw const DriverAuthException('The driver session changed.');
+      }
+      if (receipt is! Map) {
+        throw const ApiException(
+          'The earlier action could not be confirmed.',
+          503,
+          uncertain: true,
+        );
+      }
+      previousCommitted = previousCommitted || receipt['committed'] == true;
+      if (receipt['committed'] != true && receipt['cancelled'] != true) {
+        Future<dynamic> cancel() => _api.request(
+          '/drivers/me/operations/${entry.value}/cancel',
+          method: 'POST',
+          body: {},
+          headers: {'Idempotency-Key': entry.value},
+        );
+        dynamic cancelled;
+        try {
+          cancelled = await cancel();
+        } on ApiException catch (error) {
+          if (error.statusCode != 401) rethrow;
+          await refresh();
+          if (_subject != subject) {
+            throw const DriverAuthException('The driver session changed.');
+          }
+          cancelled = await cancel();
+        }
+        if (cancelled is! Map ||
+            cancelled['cancelled'] != true && cancelled['committed'] != true) {
+          throw const ApiException(
+            'The earlier action could not be reconciled.',
+            503,
+            uncertain: true,
+          );
+        }
+        previousCommitted = previousCommitted || cancelled['committed'] == true;
+      }
+      await pending.acknowledge(baseUrl, subject, entry.key);
+    }
+    if (unresolved.isNotEmpty) {
+      throw ReconciledOperation(previousCommitted: previousCommitted);
+    }
+    return pending.begin(baseUrl, subject, fingerprint, group: group);
+  }
+
   Future<dynamic> request(
     String path, {
     String method = 'GET',
     Map<String, dynamic>? body,
   }) async {
     await ensureFresh();
-    final key = method == 'GET' ? null : _idempotencyKey();
+    final subject = _subject;
+    final fingerprint = operationFingerprint(method, path, body);
+    final key = method == 'GET'
+        ? null
+        : await _beginOperation(method, path, fingerprint);
+    Future<dynamic> send() => _api.request(
+      path,
+      method: method,
+      body: body,
+      headers: key == null ? null : {'Idempotency-Key': key},
+    );
     try {
-      return await _api.request(
-        path,
-        method: method,
-        body: body,
-        headers: key == null ? null : {'Idempotency-Key': key},
-      );
-    } on ApiException catch (error) {
-      if (error.statusCode != 401) rethrow;
-      // A GET is safe to repeat. Never silently replay a financial mutation.
-      if (method != 'GET') {
+      dynamic result;
+      try {
+        result = await send();
+      } on ApiException catch (error) {
+        if (error.statusCode != 401) rethrow;
         await refresh();
-        rethrow;
+        if (_subject != subject) {
+          throw const DriverAuthException(
+            'The driver session changed. Please refresh.',
+          );
+        }
+        result = await send();
       }
-      await refresh();
-      return _api.request(path, method: method, body: body);
+      if (key != null) await pending.acknowledge(baseUrl, subject, fingerprint);
+      return result;
+    } on ApiException catch (error) {
+      if (key != null && !error.uncertain) {
+        await pending.acknowledge(baseUrl, subject, fingerprint);
+      }
+      rethrow;
     }
   }
 
-  Future<void> upload(String path, String filePath) async {
+  Future<void> upload(String path, String filePath, {String? expiresOn}) async {
     await ensureFresh();
-    await _api.upload(path, filePath);
+    final subject = _subject;
+    final file = File(filePath);
+    if (await file.length() > driverUploadLimit) {
+      throw const ApiException('Choose a file up to 5 MB.', 400);
+    }
+    final digest = sha256.convert(await file.readAsBytes()).toString();
+    final fingerprint = operationFingerprint('UPLOAD', path, {
+      'sha256': digest,
+      'filename': filePath.replaceAll('\\', '/').split('/').last,
+      'expiresOn': expiresOn ?? '',
+    });
+    final key = await _beginOperation('UPLOAD', path, fingerprint);
+    Future<void> send() =>
+        _api.upload(path, filePath, requestKey: key, expiresOn: expiresOn);
+    try {
+      try {
+        await send();
+      } on ApiException catch (error) {
+        if (error.statusCode != 401) rethrow;
+        await refresh();
+        if (_subject != subject) {
+          throw const DriverAuthException('The driver session changed.');
+        }
+        await send();
+      }
+      await pending.acknowledge(baseUrl, subject, fingerprint);
+    } on ApiException catch (error) {
+      if (!error.uncertain) {
+        await pending.acknowledge(baseUrl, subject, fingerprint);
+      }
+      rethrow;
+    }
   }
 
   Future<DriverSession> changePassword(
     String currentPassword,
     String newPassword,
   ) async {
+    final generation = _generation;
     await ensureFresh();
     final result = await _api.request(
       '/auth/driver/password',
@@ -283,7 +476,7 @@ class DriverAuth {
       body: {'currentPassword': currentPassword, 'newPassword': newPassword},
     );
     final next = DriverSession.fromResponse(result);
-    await _save(next);
+    await _save(next, expectedGeneration: generation);
     return next;
   }
 
@@ -300,21 +493,5 @@ class DriverAuth {
     }
     await _clear();
     return revoked;
-  }
-
-  String _idempotencyKey() {
-    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    final value = bytes.map((e) => e.toRadixString(16).padLeft(2, '0')).join();
-    return value.substring(0, 8) +
-        '-' +
-        value.substring(8, 12) +
-        '-' +
-        value.substring(12, 16) +
-        '-' +
-        value.substring(16, 20) +
-        '-' +
-        value.substring(20);
   }
 }

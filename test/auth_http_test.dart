@@ -67,6 +67,24 @@ void main() {
                   },
           ),
         );
+      } else if (path == '/api/v1/auth/driver/refresh') {
+        request.response.statusCode = profileStatus;
+        request.response.write(
+          jsonEncode(
+            profileStatus == 200
+                ? {
+                    'data': {
+                      'token': 'renewed-access',
+                      'refreshToken': 'rotated-refresh',
+                      'expiresIn': 3600,
+                      'profile': {'id': 'driver-1', 'role': profileRole},
+                    },
+                  }
+                : {
+                    'error': {'message': 'Driver access was revoked.'},
+                  },
+          ),
+        );
       } else if (path == '/auth/v1/otp') {
         request.response.statusCode = identityStatus;
         request.response.write(
@@ -185,6 +203,27 @@ void main() {
     },
   );
 
+  for (final provider in ['phone', 'google']) {
+    test(
+      '$provider sessions send their Supabase refresh token to the gateway and save rotation',
+      () async {
+        if (provider == 'phone') {
+          await auth.verifyPhoneOtp('+919876543210', '123456');
+        } else {
+          await auth.loginWithGoogle();
+        }
+        final renewed = await auth.refresh();
+        expect(calls.last['path'], '/api/v1/auth/driver/refresh');
+        expect(calls.last['body'], {'refreshToken': 'verified-refresh'});
+        expect(renewed.token, 'renewed-access');
+        expect(auth.current?.refreshToken, 'rotated-refresh');
+        profileStatus = 403;
+        await expectLater(auth.refresh(), throwsA(isA<Exception>()));
+        expect(auth.current, isNull);
+      },
+    );
+  }
+
   test(
     'canceling Google makes no HTTP requests and creates no session',
     () async {
@@ -259,6 +298,25 @@ void main() {
       await expectLater(
         auth.sendPhoneOtp('+919876543210'),
         throwsA(isA<DriverAuthException>()),
+      );
+      expect(auth.current, isNull);
+    },
+  );
+
+  test(
+    'otp_disabled produces setup guidance and never activates a driver',
+    () async {
+      identityStatus = 422;
+      identityError = {'error_code': 'otp_disabled'};
+      await expectLater(
+        auth.sendPhoneOtp('+919876543210'),
+        throwsA(
+          isA<DriverAuthException>().having(
+            (error) => error.message,
+            'message',
+            contains('SMS sign-in is not configured'),
+          ),
+        ),
       );
       expect(auth.current, isNull);
     },

@@ -11,8 +11,9 @@ String? normalizePhone(String input, {String countryCode = '+91'}) {
     value = '$countryCode$value';
   }
   if (!RegExp(r'^\+[1-9]\d{7,14}$').hasMatch(value)) return null;
-  if (value.startsWith('+91') && !RegExp(r'^\+91[6-9]\d{9}$').hasMatch(value))
+  if (value.startsWith('+91') && !RegExp(r'^\+91[6-9]\d{9}$').hasMatch(value)) {
     return null;
+  }
   return value;
 }
 

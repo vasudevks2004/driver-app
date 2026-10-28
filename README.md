@@ -2,16 +2,19 @@
 
 Flutter app for Android and iOS. HireD supplies drivers; businesses supply vehicles. The minimal HireD interface retains Home, Duties, Earnings and Profile.
 
-This reliability release is on `feature/driver-onboarding`. Its shared backend must be reviewed and deployed with [UniT7 PR #12](https://github.com/Buildathon-HireD-Brototype-2026/UniT7/pull/12). Pulling the app branch does not update the deployed API.
+The current integration candidate is **1.0.2 (3)**, declared in `pubspec.yaml`. It combines the tested Android staging build with the existing iOS parity and Keychain-signing configuration. See [source alignment and safe build commands](docs/release-alignment.md). The mobile client must be released with its reviewed shared backend; a repository checkout or version change does not deploy that backend.
 
 ## Run
 
 Use Flutter 3.35.7 (Dart 3.9 or newer) and JDK 17. Android and iOS projects are committed with fixed app identities; build the checked-in projects directly:
 
-```bash
+```powershell
+$env:ORG_GRADLE_PROJECT_hiredApplicationId = 'com.hired.hired_driver.staging'
+$env:ORG_GRADLE_PROJECT_hiredAppName = 'HireD Test'
+python scripts/check_driver_release.py
 flutter pub get
 flutter devices
-flutter run -d YOUR_DEVICE_ID --dart-define-from-file=config/auth.json
+flutter run -d YOUR_DEVICE_ID --dart-define-from-file=config/staging.json
 ```
 
 [Windows setup, emulator troubleshooting and validation](docs/reliability.md) include exact PowerShell commands. Keep the checkout outside OneDrive to avoid cache/file-lock interference. iOS builds require macOS/Xcode; distribution signing requires the owner's Apple credentials.

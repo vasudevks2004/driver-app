@@ -1,0 +1,85 @@
+name: HireD hosted staging Android
+
+on:
+  pull_request:
+    paths:
+      - 'config/staging.json'
+      - 'pubspec.yaml'
+      - 'scripts/check_driver_release.py'
+      - 'android/app/build.gradle.kts'
+      - 'android/app/src/main/AndroidManifest.xml'
+      - '.github/workflows/staging-android.yml'
+  workflow_dispatch:
+    inputs:
+      upload_apk:
+        description: Save the APK (uses Actions artifact storage)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  staging-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ORG_GRADLE_PROJECT_hiredApplicationId: com.hired.hired_driver.staging
+      ORG_GRADLE_PROJECT_hiredAppName: HireD Test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Validate release metadata and environment separation
+        run: python3 scripts/check_driver_release.py
+      - name: Validate isolated client configuration
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          c=json.loads(Path('config/staging.json').read_text())
+          assert c['API_URL']=='https://hired-unit7-staging.pages.dev/admin/api/v1'
+          assert c['SUPABASE_URL']=='https://wudshomvlnzblpsmntmt.supabase.co'
+          assert set(c)=={'API_URL','SUPABASE_URL','SUPABASE_PUBLISHABLE_KEY','GOOGLE_WEB_CLIENT_ID','GOOGLE_IOS_CLIENT_ID'}
+          assert c['SUPABASE_PUBLISHABLE_KEY'].startswith('sb_publishable_')
+          PY
+      - name: Install pinned Flutter 3.35.7
+        run: |
+          git init "$RUNNER_TEMP/hired-flutter"
+          git -C "$RUNNER_TEMP/hired-flutter" remote add origin https://github.com/flutter/flutter.git
+          git -C "$RUNNER_TEMP/hired-flutter" fetch --depth 1 origin adc901062556672b4138e18a4dc62a4be8f4b3c2
+          git -C "$RUNNER_TEMP/hired-flutter" checkout --detach FETCH_HEAD
+          git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
+          echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
+      - run: flutter pub get
+      - name: Check driver source and tests
+        run: |
+          dart format --output=none --set-exit-if-changed lib test integration_test
+          flutter analyze --fatal-infos --fatal-warnings
+          flutter test
+      - name: Build isolated Android APK
+        run: |
+          flutter config --jdk-dir "$JAVA_HOME_17_X64"
+          flutter build apk --debug --dart-define-from-file=config/staging.json
+      - name: Verify APK identity and record provenance
+        run: |
+          hired_aapt_bin=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$hired_aapt_bin" dump badging build/app/outputs/flutter-apk/app-debug.apk > build/staging-apk-badging.txt
+          grep -F "name='com.hired.hired_driver.staging'" build/staging-apk-badging.txt
+          grep -F "application-label:'HireD Test'" build/staging-apk-badging.txt
+          hired_release_name=$(python3 scripts/check_driver_release.py --field name)
+          hired_release_build=$(python3 scripts/check_driver_release.py --field build)
+          grep -F "versionName='$hired_release_name'" build/staging-apk-badging.txt
+          grep -F "versionCode='$hired_release_build'" build/staging-apk-badging.txt
+          sha256sum build/app/outputs/flutter-apk/app-debug.apk > build/staging-apk.sha256
+          printf '%s\n' "$GITHUB_SHA" > build/staging-source-commit.txt
+      - name: Save Android test build
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_apk
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hired-driver-staging-1.0.2
+          retention-days: 1
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/staging-apk-badging.txt
+            build/staging-apk.sha256
+            build/staging-source-commit.txt
+            config/staging.json

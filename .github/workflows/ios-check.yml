@@ -2,10 +2,15 @@ name: iOS simulator build
 on:
   push:
     branches: [main, 'feature/**']
-    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**','config/staging.json']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','scripts/check_driver_release.py','integration_test/**','config/staging.json']
   pull_request:
-    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**','config/staging.json']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','scripts/check_driver_release.py','integration_test/**','config/staging.json']
   workflow_dispatch:
+    inputs:
+      upload_artifacts:
+        description: Save the simulator app (uses artifact storage)
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -22,11 +27,14 @@ jobs:
           git -C "$RUNNER_TEMP/hired-flutter" checkout --detach FETCH_HEAD
           git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
           echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
+      - name: Validate release metadata and environment separation
+        run: python3 scripts/check_driver_release.py
       - name: Validate iOS configuration
         run: python3 scripts/check_ios.py
       - run: flutter pub get
-      - run: flutter build ios --simulator --debug --build-name=1.0.2 --build-number=3 --dart-define-from-file=config/staging.json
+      - run: flutter build ios --simulator --debug --dart-define-from-file=config/staging.json
       - name: Save iOS simulator app
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hired-driver-ios-simulator-1.0.2

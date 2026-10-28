@@ -12,10 +12,14 @@ class _ScreenAuth extends DriverAuth {
   bool googleCanceled = false;
   String? phone;
   String? name;
+  DriverAuthMethods availableMethods = const DriverAuthMethods(
+    phone: true,
+    google: true,
+    email: true,
+  );
 
   @override
-  Future<DriverAuthMethods> methods() async =>
-      const DriverAuthMethods(phone: true, google: true, email: true);
+  Future<DriverAuthMethods> methods() async => availableMethods;
 
   @override
   Future<void> sendPhoneOtp(
@@ -169,4 +173,60 @@ void main() {
     expect(find.text('Enter a valid email address'), findsOneWidget);
     expect(find.text('Enter your password'), findsWidgets);
   });
+
+  testWidgets('registration stays accessible when phone verification is off', (
+    tester,
+  ) async {
+    auth.availableMethods = const DriverAuthMethods(
+      phone: false,
+      google: false,
+      email: true,
+    );
+    await open(tester);
+    await tap(tester, find.byKey(const Key('open-register')));
+    expect(find.text('Drive with HireD.'), findsOneWidget);
+    expect(find.byKey(const Key('register-provider-retry')), findsOneWidget);
+    await tap(tester, find.text('Verify mobile & continue'));
+    expect(auth.sends, 0);
+    expect(find.byKey(const Key('auth-error')), findsOneWidget);
+    expect(find.text('Drive with HireD.'), findsOneWidget);
+    await close(tester);
+  });
+
+  testWidgets(
+    'registration retries availability without clearing entered details',
+    (tester) async {
+      auth.availableMethods = const DriverAuthMethods(
+        phone: false,
+        google: false,
+        email: true,
+      );
+      await open(tester);
+      await tap(tester, find.byKey(const Key('open-register')));
+      await tester.enterText(
+        find.byKey(const Key('register-name')),
+        'Test Driver',
+      );
+      await tester.enterText(
+        find.byKey(const Key('phone-number')),
+        '9876543210',
+      );
+      await tester.enterText(find.byKey(const Key('register-city')), 'Kochi');
+      await tap(tester, find.byKey(const Key('registration-acknowledgement')));
+      auth.availableMethods = const DriverAuthMethods(
+        phone: true,
+        google: false,
+        email: true,
+      );
+      await tap(tester, find.byKey(const Key('register-provider-retry')));
+      expect(find.byKey(const Key('register-provider-retry')), findsNothing);
+      expect(find.text('Test Driver'), findsOneWidget);
+      await tap(tester, find.text('Verify mobile & continue'));
+      expect(auth.sends, 1);
+      expect(auth.registered, isTrue);
+      expect(auth.name, 'Test Driver');
+      expect(find.text('Verify your number.'), findsOneWidget);
+      await close(tester);
+    },
+  );
 }

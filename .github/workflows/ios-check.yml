@@ -2,9 +2,9 @@ name: iOS simulator build
 on:
   push:
     branches: [main, 'feature/**']
-    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**','config/staging.json']
   pull_request:
-    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**','config/staging.json']
   workflow_dispatch:
 permissions:
   contents: read
@@ -25,11 +25,11 @@ jobs:
       - name: Validate iOS configuration
         run: python3 scripts/check_ios.py
       - run: flutter pub get
-      - run: flutter build ios --simulator --debug --dart-define-from-file=config/auth.json
+      - run: flutter build ios --simulator --debug --build-name=1.0.2 --build-number=3 --dart-define-from-file=config/staging.json
       - name: Save iOS simulator app
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: hired-driver-ios-simulator
+          name: hired-driver-ios-simulator-1.0.2
           path: build/ios/iphonesimulator/Runner.app
           if-no-files-found: error
           retention-days: 7

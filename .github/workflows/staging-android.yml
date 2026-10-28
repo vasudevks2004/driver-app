@@ -8,6 +8,11 @@ on:
       - 'android/app/src/main/AndroidManifest.xml'
       - '.github/workflows/staging-android.yml'
   workflow_dispatch:
+    inputs:
+      upload_apk:
+        description: Save the APK (uses Actions artifact storage)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -59,6 +64,7 @@ jobs:
           sha256sum build/app/outputs/flutter-apk/app-debug.apk > build/staging-apk.sha256
           printf '%s\n' "$GITHUB_SHA" > build/staging-source-commit.txt
       - name: Save Android test build
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_apk
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hired-driver-staging-1.0.2

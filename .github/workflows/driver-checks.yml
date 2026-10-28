@@ -5,6 +5,11 @@ on:
     branches: [main, 'feature/**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      upload_artifacts:
+        description: Save build files (uses Actions artifact storage)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -25,6 +30,7 @@ jobs:
           echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
       - run: flutter pub get
       - name: Save resolved dependency lock
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: driver-dependency-lock
@@ -40,7 +46,7 @@ jobs:
           HIRED_UI_PREVIEWS: '1'
           HIRED_FLUTTER_ROOT: ${{ runner.temp }}/hired-flutter
       - name: Save rendered app screens
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: driver-ui-previews
@@ -52,6 +58,7 @@ jobs:
       - name: Build Android debug app
         run: flutter build apk --debug --dart-define-from-file=config/auth.json
       - name: Save Android debug app
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hired-driver-debug-apk
@@ -63,7 +70,7 @@ jobs:
         run: npx --yes node@24.22.1 --experimental-strip-types --test supabase/functions/driver-onboarding/service.test.mjs supabase/functions/send-sms-msg91/service.test.mjs
 
   android-device:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.head_ref == 'test/hosted-staging-20261027')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -104,10 +111,6 @@ jobs:
           adb shell input keyevent 82
       - name: Native preview smoke test
         run: flutter test integration_test/device_smoke_test.dart -d emulator-5554
-      - name: Save emulator diagnostics
+      - name: Print emulator diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: android-emulator-diagnostics
-          path: ${{ runner.temp }}/hired-emulator.log
-          retention-days: 7
+        run: tail -n 120 "$RUNNER_TEMP/hired-emulator.log" || true

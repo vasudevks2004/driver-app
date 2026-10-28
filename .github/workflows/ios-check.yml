@@ -2,9 +2,9 @@ name: iOS simulator build
 on:
   push:
     branches: [main, 'feature/**']
-    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**']
   pull_request:
-    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**']
+    paths: ['.github/workflows/ios-check.yml','ios/**','pubspec.yaml','pubspec.lock','lib/**','scripts/check_ios.py','integration_test/**']
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,5 +22,24 @@ jobs:
           git -C "$RUNNER_TEMP/hired-flutter" checkout --detach FETCH_HEAD
           git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
           echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
+      - name: Validate iOS configuration
+        run: python3 scripts/check_ios.py
       - run: flutter pub get
       - run: flutter build ios --simulator --debug --dart-define-from-file=config/auth.json
+      - name: Save iOS simulator app
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hired-driver-ios-simulator
+          path: build/ios/iphonesimulator/Runner.app
+          if-no-files-found: error
+          retention-days: 7
+      - name: Build isolated preview
+        run: flutter build ios --simulator --debug -t lib/main_dev.dart
+      - name: Boot iPhone simulator
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if d["name"].startswith("iPhone")))')
+          echo "HIRED_IOS_DEVICE=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID" || true
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+      - name: Exercise native driver preview
+        run: flutter test integration_test/device_smoke_test.dart -d "$HIRED_IOS_DEVICE"

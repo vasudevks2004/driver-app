@@ -48,3 +48,9 @@ The new shared backend owns encryption, trusted approval, audited document acces
 The reviewed backend migration publishes empty invalidation hints on a private channel bound to the approved driver’s native Supabase Auth identity. The client re-reads authorised duty data on a hint and on reconnect; it never trusts a message as a new assignment. Backgrounding closes the channel, and foreground resume reconnects and refreshes. A delayed connection is shown explicitly and foreground polling remains as recovery. Apply the shared private-channel migration and verify the intended staging project’s Realtime private-channel settings before claiming live immediate assignment delivery. The app uses only its publishable project key and current user token.
 
 The committed dependency lock is the resolution exercised by the 25 October 2026 CI run (53 Flutter tests, Android debug build/emulator preview and iOS simulator build). Release-device and authenticated staging journeys are separate acceptance checks.
+
+## iPhone version
+
+See [iOS setup and TestFlight delivery](docs/ios.md) for simulator, physical iPhone,
+Keychain configuration and release acceptance. The iOS workflow produces a
+simulator app artifact and exercises the native local preview on an iPhone simulator.

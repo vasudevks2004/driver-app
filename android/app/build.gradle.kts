@@ -31,7 +31,8 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.hired.hired_driver"
+        applicationId = providers.gradleProperty("hiredApplicationId").getOrElse("com.hired.hired_driver")
+        manifestPlaceholders["hiredAppName"] = providers.gradleProperty("hiredAppName").getOrElse("HireD")
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

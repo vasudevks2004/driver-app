@@ -164,6 +164,13 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
   }
 
   Future<void> _sendOtp() async {
+    if (!_methods.known || !_methods.phone) {
+      setState(
+        () => _error =
+            'Mobile verification is currently unavailable. Retry availability or contact HireD.',
+      );
+      return;
+    }
     if (!_form.currentState!.validate()) return;
     final registering = _view == _AuthView.register;
     if (registering && !_acknowledged) {
@@ -566,9 +573,7 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
             ),
             TextButton(
               key: const Key('open-register'),
-              onPressed: _busy || !_methods.phone
-                  ? null
-                  : () => _navigate(_AuthView.register),
+              onPressed: _busy ? null : () => _navigate(_AuthView.register),
               child: const Text('Register as a new driver'),
             ),
           ],
@@ -591,6 +596,18 @@ class _DriverAuthScreenState extends State<DriverAuthScreen> {
         'Drive with HireD.',
         'Register as a new driver. Start with your details, then verify your mobile.',
       ),
+      if (!_methods.known || !_methods.phone) ...[
+        HireDNotice(
+          _methodsError ??
+              'Mobile verification is currently unavailable. You can review this form and retry before submitting your registration.',
+        ),
+        TextButton(
+          key: const Key('register-provider-retry'),
+          onPressed: _busy ? null : _checkMethods,
+          child: const Text('Retry mobile verification'),
+        ),
+        const SizedBox(height: 16),
+      ],
       const Padding(
         padding: EdgeInsets.only(bottom: 24),
         child: HireDSteps(

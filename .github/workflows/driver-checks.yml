@@ -5,6 +5,11 @@ on:
     branches: [main, 'feature/**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      upload_artifacts:
+        description: Save build files (uses Actions artifact storage)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,6 +18,9 @@ jobs:
   flutter:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      ORG_GRADLE_PROJECT_hiredApplicationId: com.hired.hired_driver.staging
+      ORG_GRADLE_PROJECT_hiredAppName: HireD Test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Install pinned Flutter 3.35.7
@@ -23,8 +31,11 @@ jobs:
           git -C "$RUNNER_TEMP/hired-flutter" checkout --detach FETCH_HEAD
           git -C "$RUNNER_TEMP/hired-flutter" tag 3.35.7 adc901062556672b4138e18a4dc62a4be8f4b3c2
           echo "$RUNNER_TEMP/hired-flutter/bin" >> "$GITHUB_PATH"
+      - name: Validate release metadata and environment separation
+        run: python3 scripts/check_driver_release.py
       - run: flutter pub get
       - name: Save resolved dependency lock
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: driver-dependency-lock
@@ -40,7 +51,7 @@ jobs:
           HIRED_UI_PREVIEWS: '1'
           HIRED_FLUTTER_ROOT: ${{ runner.temp }}/hired-flutter
       - name: Save rendered app screens
-        if: always()
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: driver-ui-previews
@@ -50,8 +61,9 @@ jobs:
       - name: Select supported JDK 17 for Android Gradle
         run: flutter config --jdk-dir "$JAVA_HOME_17_X64"
       - name: Build Android debug app
-        run: flutter build apk --debug --dart-define-from-file=config/auth.json
+        run: flutter build apk --debug --dart-define-from-file=config/staging.json
       - name: Save Android debug app
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: hired-driver-debug-apk
@@ -63,7 +75,7 @@ jobs:
         run: npx --yes node@24.22.1 --experimental-strip-types --test supabase/functions/driver-onboarding/service.test.mjs supabase/functions/send-sms-msg91/service.test.mjs
 
   android-device:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && (github.head_ref == 'test/hosted-staging-20261027' || startsWith(github.head_ref, 'chore/align-driver-')))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -104,10 +116,6 @@ jobs:
           adb shell input keyevent 82
       - name: Native preview smoke test
         run: flutter test integration_test/device_smoke_test.dart -d emulator-5554
-      - name: Save emulator diagnostics
+      - name: Print emulator diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: android-emulator-diagnostics
-          path: ${{ runner.temp }}/hired-emulator.log
-          retention-days: 7
+        run: tail -n 120 "$RUNNER_TEMP/hired-emulator.log" || true

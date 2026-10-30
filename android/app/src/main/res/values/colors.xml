@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Match HireDStyle.canvas and the initial Flutter light theme. -->
+    <color name="hired_launch_background">#F6F7FB</color>
+</resources>
